@@ -1,4 +1,32 @@
 {
-  "name": "teacher-y",
-  "packageManager": "yarn@4.11.0"
+  "name": "professor-y",
+  "version": "1.0.0",
+  "description": "Telegram bot that proxies messages to an LLM backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "NODE_ENV=development nodemon index.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "llm",
+    "proxy"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "marked": "^9.0.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "openai": "^4.28.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
