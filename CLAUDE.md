@@ -101,6 +101,15 @@ Production mode (`NODE_ENV=production`) disables polling and starts an Express s
 - Use **conventional commits** for all commit messages (e.g. `feat:`, `fix:`, `chore:`, `docs:`)
 - **Never commit unless explicitly asked** — always wait for the user to say so before running `git commit`
 
+## Web search
+
+Both backends have web search enabled by default — no extra configuration needed.
+
+| Backend | Mechanism |
+|---|---|
+| Claude | `web_search_20250305` built-in tool; Anthropic executes searches server-side via a standard multi-turn tool loop |
+| OpenAI | `web_search_preview` tool via the Responses API; the tool loop is handled server-side automatically |
+
 ## Response formatting
 
 LLM output (standard Markdown) is converted to Telegram-compatible HTML via `src/libs/formatReply.js`:

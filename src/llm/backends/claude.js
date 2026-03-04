@@ -17,16 +17,41 @@ class ClaudeBackend {
 
     const params = {
       model: this.model,
-      max_tokens: 1024,
-      messages: conversationMessages,
+      max_tokens: 4096,
+      tools: [{ type: "web_search_20250305", name: "web_search" }],
+      messages: [...conversationMessages],
     };
 
     if (systemMessage) {
       params.system = systemMessage.content;
     }
 
-    const response = await this.client.messages.create(params);
-    return response.content[0].text;
+    let response = await this.client.messages.create(params);
+
+    // Tool-use loop: web_search is executed server-side by Anthropic,
+    // but still follows the standard multi-turn tool protocol.
+    while (response.stop_reason === "tool_use") {
+      params.messages.push({ role: "assistant", content: response.content });
+
+      const toolResults = response.content
+        .filter((b) => b.type === "tool_use")
+        .map((block) => ({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: "",
+        }));
+
+      params.messages.push({ role: "user", content: toolResults });
+      response = await this.client.messages.create(params);
+    }
+
+    // Join all text blocks — the response may be split across multiple text
+    // blocks with tool_use/tool_result blocks interleaved in between.
+    return response.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("")
+      .trim();
   }
 }
 

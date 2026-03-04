@@ -11,11 +11,23 @@ class OpenAIBackend {
   }
 
   async complete(messages) {
-    const completion = await this.client.chat.completions.create({
+    // Responses API: supports web_search_preview natively and handles the
+    // tool loop server-side, returning the final answer directly.
+    const systemMessage = messages.find((m) => m.role === "system");
+    const inputMessages = messages.filter((m) => m.role !== "system");
+
+    const params = {
       model: this.model,
-      messages,
-    });
-    return completion.choices[0].message.content;
+      input: inputMessages,
+      tools: [{ type: "web_search_preview" }],
+    };
+
+    if (systemMessage) {
+      params.instructions = systemMessage.content;
+    }
+
+    const response = await this.client.responses.create(params);
+    return response.output_text;
   }
 }
 
