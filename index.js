@@ -12,46 +12,78 @@ const botUsername = process.env.TELEGRAM_BOT_USERNAME;
 const bot = new EnhancedBot(token, { mode: process.env.NODE_ENV });
 const llm = new LLMClient();
 
+const privateThreads = new Map(); // chatId -> threadId for DM conversations
+
 bot.onMessage(async (msg) => {
   try {
     const chatId = msg.chat.id;
     const text = msg.text;
     const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
     let userMessage = text;
+    let threadId;
 
     if (isGroup) {
-      if (!text.includes(`@${botUsername}`)) return;
+      const replyToId = msg.reply_to_message?.message_id;
+      const isMentioned = text.includes(`@${botUsername}`);
+      const existingThread = replyToId ? llm.resolveThread(replyToId) : null;
 
-      if (msg.reply_to_message) {
-        // Mentioned inside a reply: replied-to message is the context, mention text is the instruction
-        const originalText = msg.reply_to_message.text || "";
-        const replyContent = text
-          .replace(new RegExp(`@${botUsername}`, "g"), "")
-          .trim();
-        userMessage = replyContent
-          ? `> ${originalText}\n\n${replyContent}`
-          : originalText;
+      if (existingThread) {
+        // Reply to a tracked message — continue the thread, no @mention needed
+        threadId = existingThread;
+        userMessage = text;
+      } else if (isMentioned) {
+        // New @mention — start a fresh thread
+        threadId = llm.createThread();
+
+        if (msg.reply_to_message) {
+          // Mentioned inside a reply: replied-to message is the context, mention text is the instruction
+          const originalText = msg.reply_to_message.text || "";
+          const replyContent = text
+            .replace(new RegExp(`@${botUsername}`, "g"), "")
+            .trim();
+          userMessage = replyContent
+            ? `> ${originalText}\n\n${replyContent}`
+            : originalText;
+        } else {
+          // Direct mention: use the message itself (minus the @mention) as the prompt
+          userMessage = text
+            .replace(new RegExp(`@${botUsername}`, "g"), "")
+            .trim();
+        }
       } else {
-        // Direct mention: use the message itself (minus the @mention) as the prompt
-        userMessage = text
-          .replace(new RegExp(`@${botUsername}`, "g"), "")
-          .trim();
+        return;
       }
 
       if (!userMessage) return;
+    } else {
+      // Private chat: one persistent thread per chat
+      if (!privateThreads.has(chatId)) {
+        privateThreads.set(chatId, llm.createThread());
+      }
+      threadId = privateThreads.get(chatId);
     }
+
     await bot.sendChatAction(chatId, "typing");
-    const reply = await llm.chat(chatId, msg.from.id, userMessage);
+    const reply = await llm.chat(threadId, userMessage);
+
+    let sentMsg;
     try {
-      await bot.sendMessage(chatId, formatReply(reply), {
+      sentMsg = await bot.sendMessage(chatId, formatReply(reply), {
         reply_to_message_id: msg.message_id,
         parse_mode: "HTML",
       });
     } catch {
       // Fallback to plain text if Telegram rejects the HTML
-      await bot.sendMessage(chatId, reply, {
+      sentMsg = await bot.sendMessage(chatId, reply, {
         reply_to_message_id: msg.message_id,
       });
+    }
+
+    // Track the user's message and the bot's response so replies to either
+    // will continue this thread without needing another @mention.
+    if (isGroup) {
+      llm.trackMessage(msg.message_id, threadId);
+      llm.trackMessage(sentMsg.message_id, threadId);
     }
   } catch (error) {
     console.error("Error handling message:", error);

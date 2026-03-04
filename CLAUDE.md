@@ -89,11 +89,16 @@ Production mode (`NODE_ENV=production`) disables polling and starts an Express s
 3. Add the relevant env vars to `.env.example` and `Dockerfile`
 4. Set `LLM_BACKEND=yourbackend` in `.env`
 
-## Conversation history
+## Conversation threads
 
-- Stored in-memory as a `Map` keyed by `chatId:userId`
-- Capped at 20 messages per conversation (oldest trimmed first)
-- Cleared on process restart
+Each bot interaction in a group starts a **new thread** with its own isolated conversation history. Replies to any message in the thread (bot or user) continue the same thread without requiring another `@mention`.
+
+- `threads: Map<threadId, messages[]>` — conversation history per thread (UUID key)
+- `messageToThread: Map<messageId, threadId>` — tracks which Telegram messages belong to which thread
+- After the bot responds, both the user's triggering message and the bot's response are registered in `messageToThread`
+- In private chats, one persistent thread is maintained per chat (no branching)
+- Capped at 20 messages per thread (oldest trimmed first)
+- All state is in-memory and cleared on process restart
 - System prompt (`LLM_SYSTEM_PROMPT`) is prepended to every request but not stored in history
 
 ## Git conventions

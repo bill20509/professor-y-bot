@@ -1,3 +1,5 @@
+const { v4: uuidv4 } = require("uuid");
+
 const BACKENDS = {
   openai: () => require("./backends/openai"),
   claude: () => require("./backends/claude"),
@@ -18,23 +20,30 @@ class LLMClient {
 
     const Backend = loadBackend();
     this.backend = new Backend();
-    this.history = new Map(); // `chatId:userId` -> messages[]
+    this.threads = new Map();         // threadId -> messages[]
+    this.messageToThread = new Map(); // messageId -> threadId
   }
 
-  getHistory(chatId, userId) {
-    const key = `${chatId}:${userId}`;
-    if (!this.history.has(key)) {
-      this.history.set(key, []);
+  createThread() {
+    const threadId = uuidv4();
+    this.threads.set(threadId, []);
+    return threadId;
+  }
+
+  trackMessage(messageId, threadId) {
+    this.messageToThread.set(messageId, threadId);
+  }
+
+  resolveThread(messageId) {
+    return this.messageToThread.get(messageId) ?? null;
+  }
+
+  async chat(threadId, userMessage) {
+    if (!this.threads.has(threadId)) {
+      this.threads.set(threadId, []);
     }
-    return this.history.get(key);
-  }
 
-  clearHistory(chatId, userId) {
-    this.history.delete(`${chatId}:${userId}`);
-  }
-
-  async chat(chatId, userId, userMessage) {
-    const history = this.getHistory(chatId, userId);
+    const history = this.threads.get(threadId);
     history.push({ role: "user", content: userMessage });
 
     // Trim to keep history bounded
