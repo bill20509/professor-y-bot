@@ -10,10 +10,32 @@ class ClaudeBackend {
     this.model = process.env.CLAUDE_MODEL || "claude-haiku-4-5-20251001";
   }
 
+  normalizeMessages(messages) {
+    return messages.map((msg) => {
+      if (!Array.isArray(msg.content)) return msg;
+      return {
+        ...msg,
+        content: msg.content.map((block) =>
+          block.type === "image"
+            ? {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: block.mediaType,
+                  data: block.data,
+                },
+              }
+            : block,
+        ),
+      };
+    });
+  }
+
   async complete(messages) {
-    // Anthropic takes system as a top-level param, not a message role
-    const systemMessage = messages.find((m) => m.role === "system");
-    const conversationMessages = messages.filter((m) => m.role !== "system");
+    const normalized = this.normalizeMessages(messages);
+    // Anthropic takes system as a top-level parameter, not a message role
+    const systemMessage = normalized.find((m) => m.role === "system");
+    const conversationMessages = normalized.filter((m) => m.role !== "system");
 
     const params = {
       model: this.model,

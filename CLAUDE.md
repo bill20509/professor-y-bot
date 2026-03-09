@@ -4,16 +4,17 @@ A Telegram bot that proxies group messages to an LLM backend and replies with th
 
 ## How it works
 
-The bot activates in group chats whenever it is **@mentioned** — either in a reply or in a standalone message. In private chats, the bot responds to all messages.
+The bot activates in group chats whenever it is **@mentioned** — either in a reply or in a standalone message. In private chats, the bot responds to all messages. Both text and images are supported.
 
 **Group trigger — mention inside a reply:**
 1. User replies to any message and includes `@botname` in the reply text
 2. Bot receives: `> [original message]\n\n[reply text without @mention]`
 3. If the reply text is empty (just `@botname`), only the original message is sent as the prompt
-4. LLM response is formatted to Telegram HTML and sent as a reply
+4. If the replied-to message contains an image, it is included in the prompt
+5. LLM response is formatted to Telegram HTML and sent as a reply
 
 **Group trigger — direct mention (no reply):**
-1. User sends a message that includes `@botname` (not as a reply)
+1. User sends a message (optionally with an attached image) that includes `@botname`
 2. The whole message (minus the `@mention`) is sent as the prompt
 3. LLM response is formatted to Telegram HTML and sent as a reply
 
@@ -34,6 +35,7 @@ src/
   libs/
     parseMessage.js           ← extracts chatId, userId, text from Telegram msg
     formatReply.js            ← converts LLM markdown output to Telegram HTML
+    attachments.js            ← getLastImage() and toImageBlock() for image support
 Dockerfile                    ← production image (node:20.18.1-alpine, port 80)
 captain-definition            ← CapRover deployment config
 .env.example                  ← all supported environment variables
@@ -72,11 +74,12 @@ Production mode (`NODE_ENV=production`) disables polling and starts an Express s
 ## Telegram setup notes
 
 - **Group Privacy Mode must be disabled** via BotFather (`/setprivacy → Disable`) for the bot to receive `@mention` messages in groups
-- The bot only responds to text messages (`msg.text` must exist)
+- The bot responds to text messages and image messages (compressed photos and uncompressed image documents)
 
 ## Adding a new LLM backend
 
 1. Create `src/llm/backends/<name>.js` — implement a class with a single `async complete(messages)` method that accepts an OpenAI-style messages array (`[{ role, content }]`) and returns a string
+   - `content` may be a plain string (text-only) or an array of blocks (multimodal). Image blocks use the neutral format `{ type: "image", mediaType, data }` — implement a `normalizeMessages()` method to translate these to your backend's format before the API call
    - If the backend uses a different system prompt format (like Anthropic), extract the `role: 'system'` entry from the array and handle it internally
 2. Register the backend in `src/llm/index.js`:
    ```js
@@ -114,6 +117,31 @@ Both backends have web search enabled by default — no extra configuration need
 |---|---|
 | Claude | `web_search_20250305` built-in tool; Anthropic executes searches server-side via a standard multi-turn tool loop |
 | OpenAI | `web_search_preview` tool via the Responses API; the tool loop is handled server-side automatically |
+
+## Image support
+
+Images are plumbed from Telegram through to the LLM via a neutral internal format, then translated per-backend before the API call.
+
+**Trigger conditions (groups):** photo attached to an `@mention` message, or a reply (with or without `@mention`) to a message that contains a photo. In private chats, any message with a photo is handled.
+
+**Pipeline:**
+1. `getLastImage(msg)` (`src/libs/attachments.js`) — extracts the largest photo size or image document from a Telegram message
+2. `targetAttachment = msgAttachment || replyAttachment` — current message photo takes priority over the replied-to message photo
+3. `bot.getFile()` resolves the `file_id` to a download path
+4. `toImageBlock(token, file)` (`src/libs/attachments.js`) — downloads the file, base64-encodes it, and returns a neutral block: `{ type: "image", mediaType, data }`
+5. `userMessage` is built as a content array: `[{ type: "text", text }, imageBlock]`
+6. Each backend's `normalizeMessages()` translates the neutral block to its API format before the call
+
+**Neutral image block format** (stored in thread history):
+```js
+{ type: "image", mediaType: "image/jpeg", data: "<base64>" }
+```
+
+**Per-backend translation:**
+| Backend | Image block format |
+|---|---|
+| Claude | `{ type: "image", source: { type: "base64", media_type, data } }` |
+| OpenAI | `{ type: "input_image", image_url: "data:<mediaType>;base64,<data>" }` (text blocks become `input_text`) |
 
 ## Response formatting
 

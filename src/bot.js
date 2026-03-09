@@ -1,5 +1,6 @@
 const TelegramBot = require("node-telegram-bot-api");
 const parseMessage = require("./libs/parseMessage");
+const attachments = require("./libs/attachments");
 
 class EnhancedBot extends TelegramBot {
   handleMessage = () => {};
@@ -28,7 +29,7 @@ class EnhancedBot extends TelegramBot {
     });
 
     this.on("message", async (msg) => {
-      if (!msg.text) return;
+      if (!msg.text && !attachments.getLastImage(msg)) return;
 
       return this.handleMessage(msg);
     });

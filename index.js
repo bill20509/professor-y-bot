@@ -4,6 +4,7 @@ const EnhancedBot = require("./src/bot");
 const setup = require("./src/setup");
 const LLMClient = require("./src/llm");
 const formatReply = require("./src/libs/formatReply");
+const { getLastImage, toImageBlock } = require("./src/libs/attachments");
 const express = require("express");
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -17,7 +18,12 @@ const privateThreads = new Map(); // chatId -> threadId for DM conversations
 bot.onMessage(async (msg) => {
   try {
     const chatId = msg.chat.id;
-    const text = msg.text;
+
+    const text = msg.text || msg.caption || "";
+    const msgAttachment = getLastImage(msg);
+    const replyAttachment = getLastImage(msg.reply_to_message);
+    const targetAttachment = msgAttachment || replyAttachment;
+
     const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
     let userMessage = text;
     let threadId;
@@ -37,7 +43,8 @@ bot.onMessage(async (msg) => {
 
         if (msg.reply_to_message) {
           // Mentioned inside a reply: replied-to message is the context, mention text is the instruction
-          const originalText = msg.reply_to_message.text || "";
+          const originalText =
+            msg.reply_to_message.text || msg.reply_to_message.caption || "";
           const replyContent = text
             .replace(new RegExp(`@${botUsername}`, "g"), "")
             .trim();
@@ -54,13 +61,22 @@ bot.onMessage(async (msg) => {
         return;
       }
 
-      if (!userMessage) return;
+      if ((!userMessage || userMessage === "") && !targetAttachment) return;
     } else {
       // Private chat: one persistent thread per chat
       if (!privateThreads.has(chatId)) {
         privateThreads.set(chatId, llm.createThread());
       }
       threadId = privateThreads.get(chatId);
+    }
+
+    if (targetAttachment) {
+      const file = await bot.getFile(targetAttachment.file_id);
+      const imageBlock = await toImageBlock(token, file);
+      userMessage = [
+        { type: "text", text: userMessage || "What is in this image?" },
+        imageBlock,
+      ];
     }
 
     await bot.sendChatAction(chatId, "typing");
