@@ -130,6 +130,7 @@ The default system prompt is assembled in `src/llm/index.js` by loading an order
 
 - Use **conventional commits** for all commit messages (e.g. `feat:`, `fix:`, `chore:`, `docs:`)
 - **Never commit unless explicitly asked** — always wait for the user to say so before running `git commit`
+- **Always update CLAUDE.md** after any code change — reflect the intent, behaviour, and any new conventions introduced
 
 ## Slash commands (preprocess)
 
