@@ -82,7 +82,7 @@ Production mode (`NODE_ENV=production`) disables polling and starts an Express s
 ## Telegram setup notes
 
 - **Group Privacy Mode must be disabled** via BotFather (`/setprivacy → Disable`) for the bot to receive `@mention` messages in groups
-- The bot responds to text messages and image messages (compressed photos and uncompressed image documents)
+- The bot responds to text messages, image messages (compressed photos and uncompressed image documents), and stickers
 
 ## Adding a new LLM backend
 
@@ -159,10 +159,10 @@ All backends have web search enabled by default — no extra configuration neede
 
 Images are plumbed from Telegram through to the LLM via a neutral internal format, then translated per-backend before the API call.
 
-**Trigger conditions (groups):** photo attached to an `@mention` message, or a reply (with or without `@mention`) to a message that contains a photo. In private chats, any message with a photo is handled.
+**Trigger conditions (groups):** photo or sticker attached to an `@mention` message, or a reply (with or without `@mention`) to a message that contains a photo or sticker. In private chats, any message with a photo or sticker is handled.
 
 **Pipeline:**
-1. `getLastImage(msg)` (`src/libs/attachments.js`) — extracts the largest photo size or image document from a Telegram message
+1. `getLastImage(msg)` (`src/libs/attachments.js`) — extracts the largest photo size, image document, or sticker thumbnail from a Telegram message
 2. `targetAttachment = msgAttachment || replyAttachment` — current message photo takes priority over the replied-to message photo
 3. `bot.getFile()` resolves the `file_id` to a download path
 4. `toImageBlock(token, file)` (`src/libs/attachments.js`) — downloads the file, base64-encodes it, and returns a neutral block: `{ type: "image", mediaType, data }`

@@ -2,6 +2,7 @@
  * Returns the best image attachment from a Telegram message, or null if none.
  * For compressed photos, Telegram sends an array of sizes — we take the last
  * (largest) one. Uncompressed image documents are also supported.
+ * For stickers (static, animated, or video), the thumbnail is used.
  *
  * @param {object|null|undefined} msg - A Telegram message object
  * @returns {object|null} A Telegram PhotoSize/Document object with file_id, or null
@@ -10,6 +11,7 @@ function getLastImage(msg) {
   if (!msg) return null;
   if (msg.photo) return msg.photo[msg.photo.length - 1];
   if (msg.document?.mime_type?.startsWith("image/")) return msg.document;
+  if (msg.sticker?.thumbnail) return msg.sticker.thumbnail;
   return null;
 }
 
