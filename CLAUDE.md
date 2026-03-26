@@ -31,6 +31,8 @@ src/
   setup.js                    ← dev (polling) vs production (webhook) setup
   llm/
     index.js                  ← LLMClient: history management, backend routing
+    ROLE.md                   ← Professor Y persona and communication rules
+    BOT.md                    ← Telegram-specific response guidelines (multi-user, formatting)
     backends/
       openai.js               ← OpenAI backend
       claude.js               ← Anthropic Claude backend
@@ -108,7 +110,21 @@ Each bot interaction in a group starts a **new thread** with its own isolated co
 - In private chats, one persistent thread is maintained per chat (no branching)
 - Capped at 20 messages per thread (oldest trimmed first)
 - All state is in-memory and cleared on process restart
-- A built-in Professor Y system prompt is always prepended; `LLM_SYSTEM_PROMPT` env var appends extra instructions after it
+- The system prompt is assembled from ordered `.md` files in `src/llm/` (see below); `LLM_SYSTEM_PROMPT` env var appends extra instructions after them
+- Each user message is prefixed with `@username: ` (falling back to first name) so the LLM can distinguish between users in a shared thread
+
+## System prompt files
+
+The default system prompt is assembled in `src/llm/index.js` by loading an ordered list of `.md` files from `src/llm/`:
+
+| File | Purpose |
+|---|---|
+| `ROLE.md` | Professor Y persona — identity, tone, language rules, immutable constraints |
+| `BOT.md` | Telegram-specific guidelines — response length, formatting, multi-user awareness |
+
+**Adding a new prompt file:** create the `.md` file in `src/llm/` and add `loadPrompt("YOURFILE.md")` to the array in `index.js`. Order matters — earlier files take higher precedence.
+
+**Placeholder substitution:** use `%BOT_NAME%` anywhere in a prompt file; it will be replaced at load time with `TELEGRAM_BOT_USERNAME` from the environment.
 
 ## Git conventions
 

@@ -2,10 +2,16 @@ const { v4: uuidv4 } = require("uuid");
 const { readFileSync } = require("fs");
 const { join } = require("path");
 
-const DEFAULT_SYSTEM_PROMPT = readFileSync(
-  join(__dirname, "prompt.md"),
-  "utf8",
-).trim();
+function loadPrompt(filename) {
+  return readFileSync(join(__dirname, filename), "utf8")
+    .trim()
+    .replace(/%BOT_NAME%/g, process.env.TELEGRAM_BOT_USERNAME || "bot");
+}
+
+const DEFAULT_SYSTEM_PROMPT = [
+  loadPrompt("ROLE.md"),
+  loadPrompt("BOT.md"),
+].join("\n\n");
 
 const BACKENDS = {
   openai: () => require("./backends/openai"),

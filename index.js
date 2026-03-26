@@ -77,11 +77,18 @@ bot.onMessage(async (msg) => {
     if (preprocessed == null) return;
     userMessage = preprocessed;
 
+    // Prepend sender so the LLM can distinguish between users in the same thread
+    const senderName = msg.from?.username || msg.from?.first_name || "user";
+    const senderPrefix = `@${senderName}: `;
+    if (userMessage) {
+      userMessage = senderPrefix + userMessage;
+    }
+
     if (targetAttachment) {
       const file = await bot.getFile(targetAttachment.file_id);
       const imageBlock = await toImageBlock(token, file);
       userMessage = [
-        { type: "text", text: userMessage || "What is in this image?" },
+        { type: "text", text: userMessage || `${senderPrefix}What is in this image?` },
         imageBlock,
       ];
     }
