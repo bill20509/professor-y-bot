@@ -6,6 +6,8 @@ A Telegram bot that proxies group messages to an LLM backend and replies with th
 
 The bot activates in group chats whenever it is **@mentioned** — either in a reply or in a standalone message. In private chats, the bot responds to all messages. Both text and images are supported.
 
+**Forwarded messages are always ignored** — if `msg.forward_origin` is set, the bot silently skips the message regardless of chat type or mention.
+
 **Group trigger — mention inside a reply:**
 1. User replies to any message and includes `@botname` in the reply text
 2. Bot receives: `> [original message]\n\n[reply text without @mention]`

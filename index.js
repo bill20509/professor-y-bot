@@ -18,6 +18,8 @@ const privateThreads = new Map(); // chatId -> threadId for DM conversations
 
 bot.onMessage(async (msg) => {
   try {
+    if (msg.forward_origin) return;
+
     const chatId = msg.chat.id;
 
     const text = msg.text || msg.caption || "";
