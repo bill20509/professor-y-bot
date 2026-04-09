@@ -1,5 +1,6 @@
 const Anthropic = require("@anthropic-ai/sdk");
 const remindTool = require("../tools/remind");
+const fetchUrlTool = require("../tools/fetch-url");
 
 class ClaudeBackend {
   constructor() {
@@ -37,7 +38,14 @@ class ClaudeBackend {
     const systemMessage = normalized.find((m) => m.role === "system");
     const conversationMessages = normalized.filter((m) => m.role !== "system");
 
-    const tools = [{ type: "web_search_20250305", name: "web_search" }];
+    const tools = [
+      { type: "web_search_20250305", name: "web_search" },
+      {
+        name: fetchUrlTool.definition.name,
+        description: fetchUrlTool.definition.description,
+        input_schema: fetchUrlTool.definition.parameters,
+      },
+    ];
     if (remindTool.enabled) {
       tools.push({
         name: remindTool.definition.name,
@@ -69,6 +77,8 @@ class ClaudeBackend {
             let content = "";
             if (block.name === remindTool.definition.name) {
               content = await remindTool.execute(block.input, chatId);
+            } else if (block.name === fetchUrlTool.definition.name) {
+              content = await fetchUrlTool.execute(block.input);
             }
             return { type: "tool_result", tool_use_id: block.id, content };
           }),

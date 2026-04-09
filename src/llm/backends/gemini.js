@@ -1,5 +1,6 @@
 const { GoogleGenAI } = require("@google/genai");
 const remindTool = require("../tools/remind");
+const fetchUrlTool = require("../tools/fetch-url");
 
 class GeminiBackend {
   constructor() {
@@ -39,7 +40,18 @@ class GeminiBackend {
       parts: Array.isArray(msg.content) ? msg.content : [{ text: msg.content }],
     }));
 
-    const tools = [{ googleSearch: {} }];
+    const tools = [
+      { googleSearch: {} },
+      {
+        functionDeclarations: [
+          {
+            name: fetchUrlTool.definition.name,
+            description: fetchUrlTool.definition.description,
+            parameters: fetchUrlTool.definition.parameters,
+          },
+        ],
+      },
+    ];
     if (remindTool.enabled) {
       tools.push({
         functionDeclarations: [
@@ -72,7 +84,12 @@ class GeminiBackend {
 
       const responseParts = await Promise.all(
         functionCalls.map(async (p) => {
-          const result = await remindTool.execute(p.functionCall.args, chatId);
+          let result;
+          if (p.functionCall.name === fetchUrlTool.definition.name) {
+            result = await fetchUrlTool.execute(p.functionCall.args);
+          } else {
+            result = await remindTool.execute(p.functionCall.args, chatId);
+          }
           return {
             functionResponse: {
               name: p.functionCall.name,

@@ -1,5 +1,6 @@
 const OpenAI = require("openai");
 const remindTool = require("../tools/remind");
+const fetchUrlTool = require("../tools/fetch-url");
 
 class OpenAIBackend {
   constructor() {
@@ -35,7 +36,15 @@ class OpenAIBackend {
     const systemMessage = normalized.find((m) => m.role === "system");
     const inputMessages = normalized.filter((m) => m.role !== "system");
 
-    const tools = [{ type: "web_search_preview" }];
+    const tools = [
+      { type: "web_search_preview" },
+      {
+        type: "function",
+        name: fetchUrlTool.definition.name,
+        description: fetchUrlTool.definition.description,
+        parameters: fetchUrlTool.definition.parameters,
+      },
+    ];
     if (remindTool.enabled) {
       tools.push({
         type: "function",
@@ -64,7 +73,12 @@ class OpenAIBackend {
 
       for (const call of functionCalls) {
         const args = JSON.parse(call.arguments);
-        const result = await remindTool.execute(args, chatId);
+        let result;
+        if (call.name === fetchUrlTool.definition.name) {
+          result = await fetchUrlTool.execute(args);
+        } else {
+          result = await remindTool.execute(args, chatId);
+        }
         newInput.push({ type: "function_call_output", call_id: call.call_id, output: result });
       }
 

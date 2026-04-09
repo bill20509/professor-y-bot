@@ -41,6 +41,7 @@ src/
       lumo.js                 ← Lumo (Proton) backend
     tools/
       remind.js               ← schedule_reminder tool definition + executor (shared across backends)
+      fetch-url.js            ← fetch_url tool: fetches a URL via Jina Reader and returns markdown content
   libs/
     parseMessage.js           ← extracts chatId, userId, text from Telegram msg
     formatReply.js            ← converts LLM markdown output to Telegram HTML
@@ -182,6 +183,14 @@ All backends have web search enabled by default — no extra configuration neede
 | OpenAI | `web_search_preview` tool via the Responses API; the tool loop is handled server-side automatically |
 | Gemini | `googleSearch` grounding tool via `@google/genai` |
 | Lumo | No web search — not available via the Lumo API |
+
+## URL fetching
+
+All backends have the `fetch_url` tool enabled. When the user shares a URL and asks about its contents, the LLM calls this tool to retrieve the page as readable markdown.
+
+- **Implementation**: `src/llm/tools/fetch-url.js` — calls `https://r.jina.ai/{url}` (Jina Reader API), no API key required
+- **Output**: clean markdown, truncated to 15,000 characters with `[Content truncated]` if the page is longer
+- **Error handling**: network/HTTP errors are returned as a string to the LLM so it can respond gracefully
 
 ## Image support
 

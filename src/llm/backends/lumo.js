@@ -1,5 +1,6 @@
 const OpenAI = require("openai");
 const remindTool = require("../tools/remind");
+const fetchUrlTool = require("../tools/fetch-url");
 
 class LumoBackend {
   constructor() {
@@ -37,19 +38,27 @@ class LumoBackend {
 
     const params = { model: this.model, messages: normalized };
 
-    if (remindTool.enabled) {
-      params.tools = [
-        {
-          type: "function",
-          function: {
-            name: remindTool.definition.name,
-            description: remindTool.definition.description,
-            parameters: remindTool.definition.parameters,
-          },
+    params.tools = [
+      {
+        type: "function",
+        function: {
+          name: fetchUrlTool.definition.name,
+          description: fetchUrlTool.definition.description,
+          parameters: fetchUrlTool.definition.parameters,
         },
-      ];
-      params.tool_choice = "auto";
+      },
+    ];
+    if (remindTool.enabled) {
+      params.tools.push({
+        type: "function",
+        function: {
+          name: remindTool.definition.name,
+          description: remindTool.definition.description,
+          parameters: remindTool.definition.parameters,
+        },
+      });
     }
+    params.tool_choice = "auto";
 
     let response = await this.client.chat.completions.create(params);
     let message = response.choices[0].message;
@@ -60,7 +69,12 @@ class LumoBackend {
 
       for (const call of message.tool_calls) {
         const args = JSON.parse(call.function.arguments);
-        const result = await remindTool.execute(args, chatId);
+        let result;
+        if (call.function.name === fetchUrlTool.definition.name) {
+          result = await fetchUrlTool.execute(args);
+        } else {
+          result = await remindTool.execute(args, chatId);
+        }
         params.messages.push({
           role: "tool",
           tool_call_id: call.id,

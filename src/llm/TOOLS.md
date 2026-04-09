@@ -21,3 +21,22 @@ Schedule a reminder to be delivered to the user at a specific future time.
 
 **After calling:**
 You MUST always follow the tool call with a text reply — never return an empty response. Confirm in a single sentence what was scheduled and when. Include the local time if you can infer their timezone from context, otherwise use UTC.
+
+### fetch_url
+
+Fetch and read the content of a URL shared by the user.
+
+**When to call:**
+- The user shares a URL and asks you to read, summarise, explain, or discuss its contents
+- The user pastes a link and their question clearly depends on what is at that link
+- Any message where understanding the URL's content is necessary to give a useful reply
+
+**When not to call:**
+- The user mentions a URL only as a reference without asking you to read it
+- You already have enough context to answer without fetching the page
+
+**How to call:**
+- Pass the URL exactly as the user provided it — do not modify or clean it
+
+**After calling:**
+Respond based on the fetched content. If the fetch failed, say so briefly and offer to help another way. Never claim you cannot access URLs — use this tool instead.
