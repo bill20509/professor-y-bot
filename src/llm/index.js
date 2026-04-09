@@ -1,4 +1,3 @@
-const { v4: uuidv4 } = require("uuid");
 const { readFileSync } = require("fs");
 const { join } = require("path");
 
@@ -21,8 +20,6 @@ const BACKENDS = {
   lumo: () => require("./backends/lumo"),
 };
 
-const MAX_HISTORY = 20;
-
 class LLMClient {
   constructor() {
     const backendName = process.env.LLM_BACKEND || "openai";
@@ -37,44 +34,15 @@ class LLMClient {
     const Backend = loadBackend();
     this.backend = new Backend();
     this.backendName = backendName;
-    this.threads = new Map();         // threadId -> messages[]
-    this.messageToThread = new Map(); // messageId -> threadId
   }
 
   providerInfo() {
     return `${this.backendName} / ${this.backend.model}`;
   }
 
-  createThread() {
-    const threadId = uuidv4();
-    this.threads.set(threadId, []);
-    return threadId;
-  }
+  async chat(thread, userMessage, { chatId } = {}) {
+    thread.append("user", userMessage);
 
-  trackMessage(messageId, threadId) {
-    this.messageToThread.set(messageId, threadId);
-  }
-
-  resolveThread(messageId) {
-    return this.messageToThread.get(messageId) ?? null;
-  }
-
-  async chat(threadId, userMessage, { chatId } = {}) {
-    if (!this.threads.has(threadId)) {
-      this.threads.set(threadId, []);
-    }
-
-    const history = this.threads.get(threadId);
-    history.push({ role: "user", content: userMessage });
-
-    // Trim to keep history bounded
-    if (history.length > MAX_HISTORY) {
-      history.splice(0, history.length - MAX_HISTORY);
-    }
-
-    const messages = [];
-
-    // Always include the default personality; append any extra instructions from env
     const systemPrompt = [
       DEFAULT_SYSTEM_PROMPT,
       `Current UTC time: ${new Date().toISOString()}`,
@@ -82,12 +50,15 @@ class LLMClient {
     ]
       .filter(Boolean)
       .join("\n\n");
-    messages.push({ role: "system", content: systemPrompt });
 
-    messages.push(...history);
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...thread.history,
+    ];
 
     const reply = await this.backend.complete(messages, { chatId });
-    history.push({ role: "assistant", content: reply });
+    thread.append("assistant", reply);
+    await thread.save();
 
     return reply;
   }

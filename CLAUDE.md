@@ -30,7 +30,8 @@ src/
   bot.js                      ← EnhancedBot (extends node-telegram-bot-api)
   setup.js                    ← dev (polling) vs production (webhook) setup
   llm/
-    index.js                  ← LLMClient: history management, backend routing
+    index.js                  ← LLMClient: backend routing, chat orchestration
+    Thread.js                 ← Thread class: history, persistence, message↔thread mapping
     ROLE.md                   ← Professor Y persona and communication rules
     BOT.md                    ← Telegram-specific response guidelines (multi-user, formatting)
     backends/
@@ -45,6 +46,8 @@ src/
     formatReply.js            ← converts LLM markdown output to Telegram HTML
     attachments.js            ← getLastImage() and toImageBlock() for image support
     preprocess.js             ← slash-command handler (runs before LLM, returns null to short-circuit)
+    redis.js                  ← shared Redis client (null when REDIS_PASSWORD unset)
+    store.js                  ← thin wrapper around redis.js: null-guard + TTL, used by Thread
     subscriber.js             ← Redis Pub/Sub subscriber → bot.sendMessage on notification
 Dockerfile                    ← production image (node:20.18.1-alpine, port 80)
 captain-definition            ← CapRover deployment config
@@ -111,12 +114,16 @@ Production mode (`NODE_ENV=production`) disables polling and starts an Express s
 
 Each bot interaction in a group starts a **new thread** with its own isolated conversation history. Replies to any message in the thread (bot or user) continue the same thread without requiring another `@mention`.
 
-- `threads: Map<threadId, messages[]>` — conversation history per thread (UUID key)
-- `messageToThread: Map<messageId, threadId>` — tracks which Telegram messages belong to which thread
-- After the bot responds, both the user's triggering message and the bot's response are registered in `messageToThread`
-- In private chats, each top-level message starts a new thread; replying to any tracked message (user's or bot's) continues that thread — same model as groups
-- Capped at 20 messages per thread (oldest trimmed first)
-- All state is in-memory and cleared on process restart
+Thread management lives in `src/llm/Thread.js` and is model-agnostic:
+
+- `Thread.create()` — creates a new thread (UUID), initialises Redis entry, returns instance
+- `Thread.resolve(messageId)` — looks up which thread owns a Telegram message ID; checks `Thread.messageMap` (static in-memory) first, then Redis; returns a `Thread` instance or `null`
+- `thread.append(role, content)` — adds a message to history, trims to 20 entries
+- `thread.save()` — persists history to Redis with image blocks stripped (base64 replaced with `"[image]"` to keep payloads small)
+- `thread.trackMessage(messageId)` — registers a Telegram message ID in both `Thread.messageMap` and Redis (`msg:{id}` → threadId), enabling bi-directional lookup
+- `Thread.messageMap` — static `Map<messageId, threadId>` shared across all instances; warm-path cache to avoid a Redis round-trip on lookups
+- All Redis keys use a rolling 7-day TTL (managed by `src/libs/store.js`); without Redis, all state is in-memory and cleared on restart
+- In private chats, each top-level message starts a new thread; replying to any tracked message continues that thread — same model as groups
 - The system prompt is assembled from ordered `.md` files in `src/llm/` (see below); `LLM_SYSTEM_PROMPT` env var appends extra instructions after them
 - Each user message is prefixed with `@username: ` (falling back to first name) so the LLM can distinguish between users in a shared thread
 

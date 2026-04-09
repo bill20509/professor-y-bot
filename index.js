@@ -3,6 +3,7 @@ require("dotenv").config();
 const EnhancedBot = require("./src/bot");
 const setup = require("./src/setup");
 const LLMClient = require("./src/llm");
+const Thread = require("./src/llm/Thread");
 const formatReply = require("./src/libs/formatReply");
 const { getLastImage, toImageBlock } = require("./src/libs/attachments");
 const preprocess = require("./src/libs/preprocess");
@@ -32,20 +33,19 @@ bot.onMessage(async (msg) => {
 
     const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
     let userMessage = text;
-    let threadId;
+    let thread;
 
     if (isGroup) {
       const replyToId = msg.reply_to_message?.message_id;
       const isMentioned = text.includes(`@${botUsername}`);
-      const existingThread = replyToId ? llm.resolveThread(replyToId) : null;
+      thread = replyToId ? await Thread.resolve(replyToId) : null;
 
-      if (existingThread) {
+      if (thread) {
         // Reply to a tracked message — continue the thread, no @mention needed
-        threadId = existingThread;
         userMessage = text;
       } else if (isMentioned) {
         // New @mention — start a fresh thread
-        threadId = llm.createThread();
+        thread = await Thread.create();
 
         if (msg.reply_to_message) {
           // Mentioned inside a reply: replied-to message is the context, mention text is the instruction
@@ -78,8 +78,7 @@ bot.onMessage(async (msg) => {
         return;
       }
       const replyToId = msg.reply_to_message?.message_id;
-      const existingThread = replyToId ? llm.resolveThread(replyToId) : null;
-      threadId = existingThread ?? llm.createThread();
+      thread = (replyToId ? await Thread.resolve(replyToId) : null) ?? await Thread.create();
     }
 
     const preprocessed = await preprocess(userMessage, {
@@ -112,7 +111,7 @@ bot.onMessage(async (msg) => {
     }
 
     await bot.sendChatAction(chatId, "typing");
-    const reply = await llm.chat(threadId, userMessage, { chatId });
+    const reply = await llm.chat(thread, userMessage, { chatId });
 
     const options = { reply_to_message_id: msg.message_id };
     let sentMsg;
@@ -128,8 +127,8 @@ bot.onMessage(async (msg) => {
 
     // Track the user's message and the bot's response so replies to either
     // will continue this thread without needing another @mention.
-    llm.trackMessage(msg.message_id, threadId);
-    llm.trackMessage(sentMsg.message_id, threadId);
+    await thread.trackMessage(msg.message_id);
+    await thread.trackMessage(sentMsg.message_id);
   } catch (error) {
     console.error("Error handling message:", error);
     await bot.sendMessage(
