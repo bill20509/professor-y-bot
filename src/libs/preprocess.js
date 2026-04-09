@@ -1,5 +1,7 @@
 const Thread = require("../llm/Thread");
 
+const ADMIN_USERNAME = "yanglin1112";
+
 /**
  * Command registry. Triggered via `@bot /command` in groups (after @mention is stripped)
  * or `/command` in private chats. Handlers may be async; returning null suppresses the
@@ -7,6 +9,33 @@ const Thread = require("../llm/Thread");
  */
 const COMMANDS = {
   "/provider": ({ llm }) => llm.providerInfo(),
+
+  "/model": async ({ msg, bot, chatId, llm, isGroup }) => {
+    if (isGroup || msg.from?.username !== ADMIN_USERNAME) return null;
+
+    const groups = await llm.listModels();
+    if (!groups.length) {
+      await bot.sendMessage(chatId, "No models available — check your API keys.");
+      return null;
+    }
+
+    const rows = [];
+    for (let i = 0; i < groups.length; i += 2) {
+      rows.push(
+        groups.slice(i, i + 2).map((g) => ({
+          text: g.backend.charAt(0).toUpperCase() + g.backend.slice(1),
+          callback_data: `mp:${g.backend}`,
+        })),
+      );
+    }
+
+    await bot.sendMessage(
+      chatId,
+      `Current: <b>${llm.providerInfo()}</b>\n\nChoose a provider:`,
+      { parse_mode: "HTML", reply_markup: { inline_keyboard: rows } },
+    );
+    return null;
+  },
 
   "/export": async ({ msg }) => {
     const replyToId = msg.reply_to_message?.message_id;

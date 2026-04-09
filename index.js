@@ -11,6 +11,8 @@ const preprocess = require("./src/libs/preprocess");
 const startSubscriber = require("./src/libs/subscriber");
 const express = require("express");
 
+const ADMIN_USERNAME = "yanglin1112";
+
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const botUsername = process.env.TELEGRAM_BOT_USERNAME;
 
@@ -140,7 +142,75 @@ bot.onMessage(async (msg) => {
 });
 
 
+bot.on("callback_query", async (query) => {
+  const { data, message, from } = query;
+  if (from?.username !== ADMIN_USERNAME) {
+    await bot.answerCallbackQuery(query.id);
+    return;
+  }
+
+  const chatId = message.chat.id;
+  const messageId = message.message_id;
+
+  try {
+    if (data.startsWith("mp:")) {
+      // Show model list for chosen provider
+      const backendName = data.slice(3);
+      const models = llm._modelListCache[backendName] || [];
+      const rows = models.map((m, i) => [{ text: m, callback_data: `ms:${backendName}:${i}` }]);
+      rows.push([{ text: "← Back", callback_data: "mb" }]);
+      await bot.editMessageText(`<b>${backendName}</b> — select a model:`, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: rows },
+      });
+      await bot.answerCallbackQuery(query.id);
+
+    } else if (data.startsWith("ms:")) {
+      // Select a model
+      const [, backendName, indexStr] = data.split(":");
+      const modelName = llm._modelListCache[backendName]?.[parseInt(indexStr)];
+      if (modelName) {
+        await llm.setActiveModel(backendName, modelName);
+        await bot.editMessageText(`✓ Switched to <b>${backendName} / ${modelName}</b>`, {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: "HTML",
+        });
+        await bot.answerCallbackQuery(query.id, { text: `Now using ${modelName}` });
+      } else {
+        await bot.answerCallbackQuery(query.id, { text: "Model not found" });
+      }
+
+    } else if (data === "mb") {
+      // Back to provider list
+      const rows = [];
+      const groups = Object.keys(llm._modelListCache);
+      for (let i = 0; i < groups.length; i += 2) {
+        rows.push(
+          groups.slice(i, i + 2).map((name) => ({
+            text: name.charAt(0).toUpperCase() + name.slice(1),
+            callback_data: `mp:${name}`,
+          })),
+        );
+      }
+      await bot.editMessageText(`Current: <b>${llm.providerInfo()}</b>\n\nChoose a provider:`, {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: "HTML",
+        reply_markup: { inline_keyboard: rows },
+      });
+      await bot.answerCallbackQuery(query.id);
+    }
+  } catch (err) {
+    console.error("Error handling callback_query:", err);
+    await bot.answerCallbackQuery(query.id, { text: "Something went wrong" });
+  }
+});
+
 async function main() {
+  await llm.init();
   startSubscriber(bot);
 
   const app = express();

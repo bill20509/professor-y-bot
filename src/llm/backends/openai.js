@@ -9,7 +9,7 @@ class OpenAIBackend {
     }
 
     this.client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    this.model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+    this.model = "gpt-4o-mini";
   }
 
   normalizeMessages(messages) {
@@ -87,6 +87,16 @@ class OpenAIBackend {
     }
 
     return response.output_text;
+  }
+
+  async listModels() {
+    const all = [];
+    for await (const m of this.client.models.list()) all.push(m);
+    return all
+      .filter((m) => /^(gpt-|o1|o3|o4)/.test(m.id))
+      .sort((a, b) => b.created - a.created)
+      .slice(0, 6)
+      .map((m) => m.id);
   }
 }
 

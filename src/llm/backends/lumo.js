@@ -12,7 +12,7 @@ class LumoBackend {
       apiKey: process.env.LUMO_API_KEY,
       baseURL: "https://lumo.proton.me/api/ai/v1/",
     });
-    this.model = process.env.LUMO_MODEL || "auto";
+    this.model = "auto";
   }
 
   normalizeMessages(messages) {
@@ -87,6 +87,10 @@ class LumoBackend {
     }
 
     return message.content;
+  }
+
+  async listModels() {
+    return ["auto", "lumo-fast", "lumo-thinking"];
   }
 }
 

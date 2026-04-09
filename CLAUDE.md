@@ -62,15 +62,10 @@ captain-definition            ← CapRover deployment config
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | Yes | — | Bot token from BotFather |
 | `TELEGRAM_BOT_USERNAME` | Yes | — | Bot username without `@` |
-| `LLM_BACKEND` | No | `openai` | `openai`, `claude`, `gemini`, or `lumo` |
-| `OPENAI_API_KEY` | If openai | — | OpenAI API key |
-| `OPENAI_MODEL` | No | `gpt-4o-mini` | OpenAI model name |
-| `ANTHROPIC_API_KEY` | If claude | — | Anthropic API key |
-| `CLAUDE_MODEL` | No | `claude-haiku-4-5-20251001` | Claude model name |
-| `GEMINI_API_KEY` | If gemini | — | Google Gemini API key |
-| `GEMINI_MODEL` | No | `gemini-2.5-flash` | Gemini model name |
-| `LUMO_API_KEY` | If lumo | — | Lumo (Proton) API key |
-| `LUMO_MODEL` | No | `auto` | Lumo model: `auto`, `lumo-fast`, or `lumo-thinking` |
+| `OPENAI_API_KEY` | Optional | — | OpenAI API key; enables OpenAI models in `/model` |
+| `ANTHROPIC_API_KEY` | Optional | — | Anthropic API key; enables Claude models in `/model` |
+| `GEMINI_API_KEY` | Optional | — | Google Gemini API key; enables Gemini models in `/model` |
+| `LUMO_API_KEY` | Optional | — | Lumo API key; enables Lumo models in `/model` |
 | `LLM_SYSTEM_PROMPT` | No | — | Extra instructions appended after the built-in Professor Y system prompt |
 | `PRIVATE_CHAT_ALLOWED_USERS` | No | — | Comma-separated Telegram user IDs allowed to use private chat; empty = no one |
 | `EXTERNAL_URL` | Production | — | Public URL for webhook registration |
@@ -173,6 +168,18 @@ Before a message reaches the LLM, `src/libs/preprocess.js` checks whether it exa
 |---|---|---|
 | `/provider` | Group & PM | Current backend name and model (e.g. `gemini / gemini-2.5-flash`) |
 | `/export` | Group & PM | Returns a shareable `EXTERNAL_URL/archive/{hash}` link for the conversation; must be sent as a reply to any message in the thread |
+| `/model` | PM only (admin) | Opens an inline keyboard to dynamically switch the active backend and model; admin-only (hardcoded to `yanglin1112`) |
+
+## Dynamic model switching
+
+The active backend and model are selected at runtime via `/model` — no env vars needed. The selection is persisted to Redis with no expiry (`store.set(..., null)`) so it survives restarts.
+
+- **Default (first boot / no Redis):** `claude / claude-haiku-4-5-20251001` (hardcoded in `src/llm/index.js`)
+- **`llm.init()`** — called on startup in `main()`; loads the stored `setting:active_model` key and calls `_initBackend(backend, model)`; falls back silently to default if the key is missing or the stored backend has no API key
+- **`llm.listModels()`** — instantiates each backend whose API key is set, calls `listModels()` on it, and caches results in `llm._modelListCache` for use by the callback handler; OpenAI returns the 6 most recent chat models (filtered by `gpt-*|o1|o3|o4`, sorted by `created`); Gemini returns all `gemini-*` non-embedding models; Claude returns all `claude-*` models; Lumo returns a hardcoded list
+- **`llm.setActiveModel(backend, model)`** — calls `_initBackend()` then persists to Redis
+- **Callback flow** — `callback_data` prefixes: `mp:{backend}` (show provider's models), `ms:{backend}:{index}` (select model by cache index), `mb` (back to provider list); index avoids the Telegram 64-byte callback data limit on long model names
+- **Admin guard** — `ADMIN_USERNAME = "yanglin1112"` is hardcoded in both `src/libs/preprocess.js` and `index.js`
 
 ## Web search
 

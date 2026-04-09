@@ -9,7 +9,7 @@ class GeminiBackend {
     }
 
     this.client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    this.model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    this.model = "gemini-2.5-flash";
   }
 
   normalizeMessages(messages) {
@@ -104,6 +104,15 @@ class GeminiBackend {
     }
 
     return response.text;
+  }
+
+  async listModels() {
+    const models = [];
+    const pager = await this.client.models.list();
+    for await (const m of pager) models.push(m);
+    return models
+      .filter((m) => m.name?.includes("gemini") && !m.name?.includes("embedding"))
+      .map((m) => m.name.replace("models/", ""));
   }
 }
 

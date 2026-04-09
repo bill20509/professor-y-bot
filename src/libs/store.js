@@ -6,7 +6,14 @@ module.exports = {
   async get(key) {
     return redis ? redis.get(key) : null;
   },
-  async set(key, value) {
-    if (redis) await redis.setex(key, TTL, value);
+  /**
+   * @param {string} key
+   * @param {string} value
+   * @param {number|null} [ttl=TTL] - seconds; pass null for no expiry
+   */
+  async set(key, value, ttl = TTL) {
+    if (!redis) return;
+    if (ttl) await redis.setex(key, ttl, value);
+    else await redis.set(key, value);
   },
 };

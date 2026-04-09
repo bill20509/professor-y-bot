@@ -9,7 +9,7 @@ class ClaudeBackend {
     }
 
     this.client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    this.model = process.env.CLAUDE_MODEL || "claude-haiku-4-5-20251001";
+    this.model = "claude-haiku-4-5-20251001";
   }
 
   normalizeMessages(messages) {
@@ -93,6 +93,12 @@ class ClaudeBackend {
       .map((b) => b.text)
       .join("")
       .trim();
+  }
+
+  async listModels() {
+    const models = [];
+    for await (const m of this.client.models.list()) models.push(m.id);
+    return models.filter((id) => id.startsWith("claude-"));
   }
 }
 
