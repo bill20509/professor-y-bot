@@ -40,29 +40,23 @@ class GeminiBackend {
       parts: Array.isArray(msg.content) ? msg.content : [{ text: msg.content }],
     }));
 
-    const tools = [
-      { googleSearch: {} },
+    // Gemini does not allow mixing built-in tools (googleSearch) with
+    // functionDeclarations in the same request — use functionDeclarations only.
+    const functionDeclarations = [
       {
-        functionDeclarations: [
-          {
-            name: fetchUrlTool.definition.name,
-            description: fetchUrlTool.definition.description,
-            parameters: fetchUrlTool.definition.parameters,
-          },
-        ],
+        name: fetchUrlTool.definition.name,
+        description: fetchUrlTool.definition.description,
+        parameters: fetchUrlTool.definition.parameters,
       },
     ];
     if (remindTool.enabled) {
-      tools.push({
-        functionDeclarations: [
-          {
-            name: remindTool.definition.name,
-            description: remindTool.definition.description,
-            parameters: remindTool.definition.parameters,
-          },
-        ],
+      functionDeclarations.push({
+        name: remindTool.definition.name,
+        description: remindTool.definition.description,
+        parameters: remindTool.definition.parameters,
       });
     }
+    const tools = [{ functionDeclarations }];
 
     const config = { tools };
     if (systemMessage) {

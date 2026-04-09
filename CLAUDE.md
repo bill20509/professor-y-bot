@@ -189,7 +189,7 @@ All backends have web search enabled by default — no extra configuration neede
 |---|---|
 | Claude | `web_search_20250305` built-in tool; Anthropic executes searches server-side via a standard multi-turn tool loop |
 | OpenAI | `web_search_preview` tool via the Responses API; the tool loop is handled server-side automatically |
-| Gemini | `googleSearch` grounding tool via `@google/genai` |
+| Gemini | No built-in web search — Gemini API forbids combining `googleSearch` with `functionDeclarations` in the same request; use `fetch_url` tool instead |
 | Lumo | No web search — not available via the Lumo API |
 
 ## URL fetching
