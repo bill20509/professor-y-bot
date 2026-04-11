@@ -31,7 +31,7 @@ const definition = {
  * @param {number} chatId - Telegram chat ID to deliver the reminder to
  * @returns {Promise<string>} - result string to return to the LLM
  */
-async function execute({ deliver_at, text }, chatId) {
+async function execute({ deliver_at, text }, { chatId } = {}) {
   const res = await fetch(`${SCHEDULER_URL}/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -1,6 +1,6 @@
 # Professor-Y
 
-A Telegram bot that proxies group messages to an LLM backend and replies with the generated response. Conversation history lives in Redis (or in-memory when Redis is unavailable). A Prisma database layer is wired up for persistent structured data; schema is currently empty and ready for models.
+A Telegram bot that proxies group messages to an LLM backend and replies with the generated response. Conversation history lives in Redis (or in-memory when Redis is unavailable). A Prisma database layer is wired up for persistent structured data. Current models: `UserProfile` (free-form Markdown notes per user, read/written via LLM tool calls).
 
 ## How it works
 
@@ -42,6 +42,7 @@ src/
     tools/
       remind.js               ← schedule_reminder tool definition + executor (shared across backends)
       fetch-url.js            ← fetch_url tool: fetches a URL via Jina Reader and returns markdown content
+      user-profile.js         ← get_user_profile / update_user_profile tools: read/write per-user Markdown notes in DB
   libs/
     parseMessage.js           ← extracts chatId, userId, text from Telegram msg
     formatReply.js            ← converts LLM markdown output to Telegram HTML
@@ -100,7 +101,7 @@ The project uses **Prisma 6** as its ORM. Two schema files handle the dev/prod s
 | `prisma/schema.prisma` | PostgreSQL | production (CapRover) |
 | `prisma/schema.dev.prisma` | SQLite | local development |
 
-Both schemas are currently empty — add models when ready, then run the appropriate migrate/push command.
+Add models to both schema files when needed, then run the appropriate migrate/push command.
 
 **Local dev (SQLite)** — zero setup required:
 ```sh
@@ -250,6 +251,18 @@ All backends have the `fetch_url` tool enabled. When the user shares a URL and a
 - **Implementation**: `src/llm/tools/fetch-url.js` — calls `https://r.jina.ai/{url}` (Jina Reader API), no API key required
 - **Output**: clean markdown, truncated to 15,000 characters with `[Content truncated]` if the page is longer
 - **Error handling**: network/HTTP errors are returned as a string to the LLM so it can respond gracefully
+
+## User profiles
+
+Each Telegram user can have a persistent Markdown profile stored in the `user_profiles` database table. The LLM reads and writes it autonomously via two tools.
+
+- **`get_user_profile`** — retrieves profile notes for a user; omit `username` for the current user, or pass a Telegram username to look up another user (e.g. when someone asks about `@alice`); returns `"No profile found for @username."` if none exists
+- **`update_user_profile`** — upserts the full Markdown notes document for the current user
+- **Implementation**: `src/llm/tools/user-profile.js` — uses `getDb()` from `src/libs/db.js`; both tools are silently omitted when `DATABASE_URL` is unset
+- **Keyed by**: Telegram `username` — the only user identity visible to the LLM in the `@username:` message prefix
+- **Format**: free-form Markdown bullet points (e.g. `- Language: English`, `- Interests: climbing`)
+- **Context flow**: `msg.from.id` + `msg.from.username` are threaded through `llm.chat()` → `backend.complete()` → tool `execute()` as `{ chatId, userId, username }`
+- **Tool guidance**: `src/llm/TOOLS.md` instructs the LLM when to call each operation
 
 ## Image support
 

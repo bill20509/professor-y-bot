@@ -1,6 +1,7 @@
 const Anthropic = require("@anthropic-ai/sdk");
 const remindTool = require("../tools/remind");
 const fetchUrlTool = require("../tools/fetch-url");
+const userProfileTool = require("../tools/user-profile");
 
 class ClaudeBackend {
   constructor() {
@@ -33,7 +34,7 @@ class ClaudeBackend {
     });
   }
 
-  async complete(messages, { chatId } = {}) {
+  async complete(messages, { chatId, userId, username } = {}) {
     const normalized = this.normalizeMessages(messages);
     const systemMessage = normalized.find((m) => m.role === "system");
     const conversationMessages = normalized.filter((m) => m.role !== "system");
@@ -52,6 +53,20 @@ class ClaudeBackend {
         description: remindTool.definition.description,
         input_schema: remindTool.definition.parameters,
       });
+    }
+    if (userProfileTool.enabled) {
+      tools.push(
+        {
+          name: userProfileTool.getDefinition.name,
+          description: userProfileTool.getDefinition.description,
+          input_schema: userProfileTool.getDefinition.parameters,
+        },
+        {
+          name: userProfileTool.updateDefinition.name,
+          description: userProfileTool.updateDefinition.description,
+          input_schema: userProfileTool.updateDefinition.parameters,
+        },
+      );
     }
 
     const params = {
@@ -76,9 +91,13 @@ class ClaudeBackend {
           .map(async (block) => {
             let content = "";
             if (block.name === remindTool.definition.name) {
-              content = await remindTool.execute(block.input, chatId);
+              content = await remindTool.execute(block.input, { chatId });
             } else if (block.name === fetchUrlTool.definition.name) {
               content = await fetchUrlTool.execute(block.input);
+            } else if (block.name === userProfileTool.getDefinition.name) {
+              content = await userProfileTool.getProfile(block.input, { chatId, userId, username });
+            } else if (block.name === userProfileTool.updateDefinition.name) {
+              content = await userProfileTool.updateProfile(block.input, { chatId, userId, username });
             }
             return { type: "tool_result", tool_use_id: block.id, content };
           }),

@@ -1,6 +1,7 @@
 const OpenAI = require("openai");
 const remindTool = require("../tools/remind");
 const fetchUrlTool = require("../tools/fetch-url");
+const userProfileTool = require("../tools/user-profile");
 
 class OpenAIBackend {
   constructor() {
@@ -31,7 +32,7 @@ class OpenAIBackend {
     });
   }
 
-  async complete(messages, { chatId } = {}) {
+  async complete(messages, { chatId, userId, username } = {}) {
     const normalized = this.normalizeMessages(messages);
     const systemMessage = normalized.find((m) => m.role === "system");
     const inputMessages = normalized.filter((m) => m.role !== "system");
@@ -52,6 +53,22 @@ class OpenAIBackend {
         description: remindTool.definition.description,
         parameters: remindTool.definition.parameters,
       });
+    }
+    if (userProfileTool.enabled) {
+      tools.push(
+        {
+          type: "function",
+          name: userProfileTool.getDefinition.name,
+          description: userProfileTool.getDefinition.description,
+          parameters: userProfileTool.getDefinition.parameters,
+        },
+        {
+          type: "function",
+          name: userProfileTool.updateDefinition.name,
+          description: userProfileTool.updateDefinition.description,
+          parameters: userProfileTool.updateDefinition.parameters,
+        },
+      );
     }
 
     const params = {
@@ -76,8 +93,12 @@ class OpenAIBackend {
         let result;
         if (call.name === fetchUrlTool.definition.name) {
           result = await fetchUrlTool.execute(args);
-        } else {
-          result = await remindTool.execute(args, chatId);
+        } else if (call.name === remindTool.definition.name) {
+          result = await remindTool.execute(args, { chatId });
+        } else if (call.name === userProfileTool.getDefinition.name) {
+          result = await userProfileTool.getProfile(args, { chatId, userId, username });
+        } else if (call.name === userProfileTool.updateDefinition.name) {
+          result = await userProfileTool.updateProfile(args, { chatId, userId, username });
         }
         newInput.push({ type: "function_call_output", call_id: call.call_id, output: result });
       }

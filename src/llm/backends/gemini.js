@@ -1,6 +1,7 @@
 const { GoogleGenAI } = require("@google/genai");
 const remindTool = require("../tools/remind");
 const fetchUrlTool = require("../tools/fetch-url");
+const userProfileTool = require("../tools/user-profile");
 
 class GeminiBackend {
   constructor() {
@@ -29,7 +30,7 @@ class GeminiBackend {
     });
   }
 
-  async complete(messages, { chatId } = {}) {
+  async complete(messages, { chatId, userId, username } = {}) {
     const normalized = this.normalizeMessages(messages);
 
     const systemMessage = normalized.find((m) => m.role === "system");
@@ -56,6 +57,20 @@ class GeminiBackend {
         parameters: remindTool.definition.parameters,
       });
     }
+    if (userProfileTool.enabled) {
+      functionDeclarations.push(
+        {
+          name: userProfileTool.getDefinition.name,
+          description: userProfileTool.getDefinition.description,
+          parameters: userProfileTool.getDefinition.parameters,
+        },
+        {
+          name: userProfileTool.updateDefinition.name,
+          description: userProfileTool.updateDefinition.description,
+          parameters: userProfileTool.updateDefinition.parameters,
+        },
+      );
+    }
     const tools = [{ functionDeclarations }];
 
     const config = { tools };
@@ -81,8 +96,12 @@ class GeminiBackend {
           let result;
           if (p.functionCall.name === fetchUrlTool.definition.name) {
             result = await fetchUrlTool.execute(p.functionCall.args);
-          } else {
-            result = await remindTool.execute(p.functionCall.args, chatId);
+          } else if (p.functionCall.name === remindTool.definition.name) {
+            result = await remindTool.execute(p.functionCall.args, { chatId });
+          } else if (p.functionCall.name === userProfileTool.getDefinition.name) {
+            result = await userProfileTool.getProfile(p.functionCall.args, { chatId, userId, username });
+          } else if (p.functionCall.name === userProfileTool.updateDefinition.name) {
+            result = await userProfileTool.updateProfile(p.functionCall.args, { chatId, userId, username });
           }
           return {
             functionResponse: {

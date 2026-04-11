@@ -114,7 +114,11 @@ bot.onMessage(async (msg) => {
     }
 
     await bot.sendChatAction(chatId, "typing");
-    const reply = await llm.chat(thread, userMessage, { chatId });
+    const reply = await llm.chat(thread, userMessage, {
+      chatId,
+      userId: msg.from?.id,
+      username: msg.from?.username || msg.from?.first_name,
+    });
 
     const options = { reply_to_message_id: msg.message_id };
     let sentMsg;

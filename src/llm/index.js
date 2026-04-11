@@ -82,7 +82,7 @@ class LLMClient {
     return `${this.backendName} / ${this.backend.model}`;
   }
 
-  async chat(thread, userMessage, { chatId } = {}) {
+  async chat(thread, userMessage, { chatId, userId, username } = {}) {
     thread.append("user", userMessage);
 
     const systemPrompt = [
@@ -98,7 +98,7 @@ class LLMClient {
       ...thread.history,
     ];
 
-    const reply = await this.backend.complete(messages, { chatId });
+    const reply = await this.backend.complete(messages, { chatId, userId, username });
     thread.append("assistant", reply);
     await thread.save();
 
