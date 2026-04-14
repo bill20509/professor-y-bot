@@ -130,6 +130,7 @@ yarn dev:db:generate && yarn db:migrate --name <migration-name>
 | `yarn db:migrate` | Create a dev migration |
 | `yarn db:migrate:prod` | Deploy migrations in production |
 | `yarn db:studio` | Open Prisma Studio for production DB |
+| `yarn clear-commands` | Clear all registered bot commands from Telegram (see below) |
 
 **`src/libs/db.js`** exports `getDb()` — returns a `PrismaClient` instance when `DATABASE_URL` is set, otherwise `null`. Always null-check before use.
 
@@ -153,6 +154,21 @@ The `/export` command generates a shareable link to a read-only HTML view of a c
 
 - **Group Privacy Mode must be disabled** via BotFather (`/setprivacy → Disable`) for the bot to receive `@mention` messages in groups
 - The bot responds to text messages, image messages (compressed photos and uncompressed image documents), and stickers
+
+## Telegram command list
+
+Telegram stores a server-side list of bot commands (the "/" suggestions shown in clients). This list is set via the Bot API and **does not automatically update** when commands are added or removed from code.
+
+To clear all registered commands after removing them from code:
+
+```sh
+TELEGRAM_BOT_TOKEN=<token> yarn clear-commands
+# or with .env configured:
+yarn clear-commands
+```
+
+- **Script**: `scripts/clear-commands.js` — calls `deleteMyCommands` across all scopes (default, private chats, group chats, admins), prints before/after state
+- Run this once whenever commands are removed from `src/libs/preprocess.js` to keep the Telegram UI in sync
 
 ## Adding a new LLM backend
 
