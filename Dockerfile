@@ -31,6 +31,13 @@ ENV DATABASE_URL=${DATABASE_URL}
 ENV NODE_ENV=production
 ENV PORT=80
 
+ENV TZ=Asia/Taipei
+
+RUN apk add --no-cache tzdata && \
+    cp /usr/share/zoneinfo/Asia/Taipei /etc/localtime && \
+    echo "Asia/Taipei" > /etc/timezone && \
+    apk del tzdata
+
 WORKDIR /app
 
 COPY package.json yarn.lock ./

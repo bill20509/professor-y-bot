@@ -85,9 +85,12 @@ class LLMClient {
   async chat(thread, userMessage, { chatId, userId, username } = {}) {
     thread.append("user", userMessage);
 
+    const tz = process.env.TZ || "UTC";
+    const currentTime = `Current time: ${new Date().toLocaleString("en-US", { timeZone: tz, hour12: false, dateStyle: "full", timeStyle: "long" })} (${tz})`;
+
     const systemPrompt = [
       DEFAULT_SYSTEM_PROMPT,
-      `Current UTC time: ${new Date().toISOString()}`,
+      currentTime,
       process.env.LLM_SYSTEM_PROMPT,
     ]
       .filter(Boolean)
