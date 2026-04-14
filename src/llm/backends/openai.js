@@ -2,6 +2,7 @@ const OpenAI = require("openai");
 const remindTool = require("../tools/remind");
 const fetchUrlTool = require("../tools/fetch-url");
 const userProfileTool = require("../tools/user-profile");
+const searchMapTool = require("../tools/search-map");
 
 class OpenAIBackend {
   constructor() {
@@ -44,6 +45,12 @@ class OpenAIBackend {
         name: fetchUrlTool.definition.name,
         description: fetchUrlTool.definition.description,
         parameters: fetchUrlTool.definition.parameters,
+      },
+      {
+        type: "function",
+        name: searchMapTool.definition.name,
+        description: searchMapTool.definition.description,
+        parameters: searchMapTool.definition.parameters,
       },
     ];
     if (remindTool.enabled) {
@@ -93,6 +100,8 @@ class OpenAIBackend {
         let result;
         if (call.name === fetchUrlTool.definition.name) {
           result = await fetchUrlTool.execute(args);
+        } else if (call.name === searchMapTool.definition.name) {
+          result = await searchMapTool.execute(args);
         } else if (call.name === remindTool.definition.name) {
           result = await remindTool.execute(args, { chatId });
         } else if (call.name === userProfileTool.getDefinition.name) {

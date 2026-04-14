@@ -75,6 +75,7 @@ captain-definition            ← CapRover deployment config
 | `ANTHROPIC_API_KEY` | Optional | — | Anthropic API key; enables Claude models in `/model` |
 | `GEMINI_API_KEY` | Optional | — | Google Gemini API key; enables Gemini models in `/model` |
 | `LUMO_API_KEY` | Optional | — | Lumo API key; enables Lumo models in `/model` |
+| `GOOGLE_MAPS_API_KEY` | Optional | — | Google Maps API key; required for `search_map` tool (Places API + Geocoding API) |
 | `LLM_SYSTEM_PROMPT` | No | — | Extra instructions appended after the built-in Professor Y system prompt |
 | `PRIVATE_CHAT_ALLOWED_USERS` | No | — | Comma-separated Telegram user IDs allowed to use private chat; empty = no one |
 | `EXTERNAL_URL` | Production | — | Public URL for webhook registration |
@@ -211,7 +212,7 @@ The default system prompt is assembled in `src/llm/index.js` by loading an order
 |---|---|
 | `ROLE.md` | Professor Y persona — identity, tone, language rules, immutable constraints |
 | `BOT.md` | Telegram-specific guidelines — response length, formatting, multi-user awareness |
-| `TOOLS.md` | Custom tool instructions — when and how to call each tool (only loaded when `REDIS_URL` is set) |
+| `TOOLS.md` | Custom tool instructions — when and how to call each tool (always loaded) |
 
 **Adding a new prompt file:** create the `.md` file in `src/llm/` and add `loadPrompt("YOURFILE.md")` to the array in `index.js`. Order matters — earlier files take higher precedence.
 
@@ -267,6 +268,16 @@ All backends have the `fetch_url` tool enabled. When the user shares a URL and a
 - **Implementation**: `src/llm/tools/fetch-url.js` — calls `https://r.jina.ai/{url}` (Jina Reader API), no API key required
 - **Output**: clean markdown, truncated to 15,000 characters with `[Content truncated]` if the page is longer
 - **Error handling**: network/HTTP errors are returned as a string to the LLM so it can respond gracefully
+
+## Map search
+
+The bot can search for places and POIs via Google Maps using the `search_map` tool.
+
+- **Implementation**: `src/llm/tools/search-map.js` — uses Google Maps Places Text Search API (for `query`) and Geocoding API (for `lat`+`lon` reverse geocoding)
+- **Modes**: text search (`query`), geocoding (`query` with an address), reverse geocoding (`lat`+`lon`)
+- **Output**: name, address, coordinates, Google Maps link (`place_id` URL), categories (types), rating, price level, open-now status
+- **Limit**: configurable via `limit` parameter (1–20); LLM defaults to 5 per `TOOLS.md` guidance
+- **Requires**: `GOOGLE_MAPS_API_KEY` env var — needs **Places API** and **Geocoding API** enabled in Google Cloud Console; returns an error string to the LLM if the key is unset
 
 ## User profiles
 

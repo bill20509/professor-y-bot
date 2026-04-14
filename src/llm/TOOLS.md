@@ -89,3 +89,25 @@ Save updated Markdown profile notes for a user.
 
 **After calling:**
 You MUST follow up with a brief text reply — never return an empty response. Confirm what you remembered in one short sentence.
+
+### search_map
+
+Search for places, points of interest, addresses, or coordinates using Google Maps.
+
+**When to call:**
+- The user asks for recommendations near a location (e.g. "find me good sushi in Osaka", "coffee shops near me")
+- The user asks where something is (e.g. "where is the Louvre?", "find Taipei 101")
+- The user shares coordinates and asks what's there or what's nearby
+- Any message where finding a real-world location or POI is necessary to answer
+
+**When not to call:**
+- The user is discussing places in a purely factual or hypothetical way without needing location data
+- The answer doesn't require looking up a real place (e.g. "what country is Tokyo in?")
+
+**How to call:**
+- For place search or geocoding: provide `query` with a natural description; omit `limit` to use the default of 5
+- For reverse geocoding: provide `lat` and `lon`; omit `query`
+- Increase `limit` (up to 20) only when the user explicitly wants a longer list
+
+**After calling:**
+Present results conversationally as recommendations. For each place, format the name as a Markdown link using the Google Maps URL from the result — e.g. `[Ichiran Ramen](https://www.google.com/maps/place/?q=place_id:...)`. Highlight the most relevant details (address, rating, opening status) after the linked name. If no results were found, say so and suggest rephrasing the query.

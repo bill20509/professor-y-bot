@@ -1,6 +1,7 @@
 const OpenAI = require("openai");
 const remindTool = require("../tools/remind");
 const fetchUrlTool = require("../tools/fetch-url");
+const searchMapTool = require("../tools/search-map");
 
 class LumoBackend {
   constructor() {
@@ -47,6 +48,14 @@ class LumoBackend {
           parameters: fetchUrlTool.definition.parameters,
         },
       },
+      {
+        type: "function",
+        function: {
+          name: searchMapTool.definition.name,
+          description: searchMapTool.definition.description,
+          parameters: searchMapTool.definition.parameters,
+        },
+      },
     ];
     if (remindTool.enabled) {
       params.tools.push({
@@ -72,8 +81,10 @@ class LumoBackend {
         let result;
         if (call.function.name === fetchUrlTool.definition.name) {
           result = await fetchUrlTool.execute(args);
-        } else {
-          result = await remindTool.execute(args, chatId);
+        } else if (call.function.name === remindTool.definition.name) {
+          result = await remindTool.execute(args, { chatId });
+        } else if (call.function.name === searchMapTool.definition.name) {
+          result = await searchMapTool.execute(args);
         }
         params.messages.push({
           role: "tool",

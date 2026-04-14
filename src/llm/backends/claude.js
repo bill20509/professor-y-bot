@@ -2,6 +2,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 const remindTool = require("../tools/remind");
 const fetchUrlTool = require("../tools/fetch-url");
 const userProfileTool = require("../tools/user-profile");
+const searchMapTool = require("../tools/search-map");
 
 class ClaudeBackend {
   constructor() {
@@ -45,6 +46,11 @@ class ClaudeBackend {
         name: fetchUrlTool.definition.name,
         description: fetchUrlTool.definition.description,
         input_schema: fetchUrlTool.definition.parameters,
+      },
+      {
+        name: searchMapTool.definition.name,
+        description: searchMapTool.definition.description,
+        input_schema: searchMapTool.definition.parameters,
       },
     ];
     if (remindTool.enabled) {
@@ -94,6 +100,8 @@ class ClaudeBackend {
               content = await remindTool.execute(block.input, { chatId });
             } else if (block.name === fetchUrlTool.definition.name) {
               content = await fetchUrlTool.execute(block.input);
+            } else if (block.name === searchMapTool.definition.name) {
+              content = await searchMapTool.execute(block.input);
             } else if (block.name === userProfileTool.getDefinition.name) {
               content = await userProfileTool.getProfile(block.input, { chatId, userId, username });
             } else if (block.name === userProfileTool.updateDefinition.name) {
