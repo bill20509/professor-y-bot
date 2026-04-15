@@ -34,6 +34,39 @@ class LumoBackend {
     });
   }
 
+  // Lumo always streams — collect chunks into a single message object.
+  async _streamToMessage(params) {
+    const stream = await this.client.chat.completions.create({ ...params, stream: true });
+    let content = "";
+    const toolCallsMap = {};
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      if (!delta) continue;
+      if (delta.content) content += delta.content;
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          if (!toolCallsMap[tc.index]) {
+            toolCallsMap[tc.index] = {
+              id: tc.id,
+              type: tc.type || "function",
+              function: { name: tc.function?.name || "", arguments: "" },
+            };
+          }
+          if (tc.function?.name) toolCallsMap[tc.index].function.name = tc.function.name;
+          if (tc.function?.arguments) toolCallsMap[tc.index].function.arguments += tc.function.arguments;
+        }
+      }
+    }
+
+    const tool_calls = Object.values(toolCallsMap);
+    return {
+      role: "assistant",
+      content: content || null,
+      tool_calls: tool_calls.length ? tool_calls : undefined,
+    };
+  }
+
   async complete(messages, { chatId } = {}) {
     const normalized = this.normalizeMessages(messages);
 
@@ -69,8 +102,7 @@ class LumoBackend {
     }
     params.tool_choice = "auto";
 
-    let response = await this.client.chat.completions.create(params);
-    let message = response.choices[0].message;
+    let message = await this._streamToMessage(params);
 
     // Handle tool calls
     if (message.tool_calls?.length) {
@@ -93,8 +125,7 @@ class LumoBackend {
         });
       }
 
-      response = await this.client.chat.completions.create(params);
-      message = response.choices[0].message;
+      message = await this._streamToMessage(params);
     }
 
     return message.content;
