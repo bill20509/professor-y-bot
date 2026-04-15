@@ -279,6 +279,18 @@ The bot can search for places and POIs via Google Maps using the `search_map` to
 - **Limit**: configurable via `limit` parameter (1–20); LLM defaults to 5 per `TOOLS.md` guidance
 - **Requires**: `GOOGLE_MAPS_API_KEY` env var — needs **Places API** and **Geocoding API** enabled in Google Cloud Console; returns an error string to the LLM if the key is unset
 
+## Meal recommendation
+
+The bot recommends restaurants for breakfast, lunch, or dinner based on the user's location and chosen cuisine genre.
+
+- **Trigger**: Any message expressing meal intent — "what should I eat", "meal recommendation", "I'm hungry", "suggest a restaurant", "recommend me lunch/dinner/breakfast"
+- **Meal type detection**: Inferred from current time (breakfast 05:00–10:30, lunch 10:30–17:00, dinner 17:00–05:00); user can always override explicitly
+- **Location resolution**: Read from user profile first via `get_user_profile`; if absent, ask the user before proceeding; after the first recommendation, offer to save the location to the profile
+- **Genre selection**: LLM suggests 3–4 options based on meal type — breakfast: café, bakery/pastry, brunch, congee, dim sum; lunch: ramen, rice bowl, sushi, Thai, Vietnamese, sandwiches, Indian; dinner: izakaya, Korean BBQ, seafood, Italian, hotpot, steakhouse, tapas — user can also specify their own
+- **Implementation**: `src/llm/tools/recommend-meal.js` — calls Google Places Text Search with `limit: 20`, applies Fisher-Yates shuffle in-place, returns the top 3 results formatted with `formatPlaceResult` (re-exported from `search-map.js`)
+- **Requires**: `GOOGLE_MAPS_API_KEY` env var (same key as `search_map`); returns an error string to the LLM if unset
+- **Tool guidance**: `src/llm/TOOLS.md` contains full LLM orchestration instructions including the genre pool tables and post-recommendation flow
+
 ## User profiles
 
 Each Telegram user can have a persistent Markdown profile stored in the `user_profiles` database table. The LLM reads and writes it autonomously via two tools.

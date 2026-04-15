@@ -3,6 +3,7 @@ const remindTool = require("../tools/remind");
 const fetchUrlTool = require("../tools/fetch-url");
 const userProfileTool = require("../tools/user-profile");
 const searchMapTool = require("../tools/search-map");
+const recommendMealTool = require("../tools/recommend-meal");
 
 class ClaudeBackend {
   constructor() {
@@ -51,6 +52,11 @@ class ClaudeBackend {
         name: searchMapTool.definition.name,
         description: searchMapTool.definition.description,
         input_schema: searchMapTool.definition.parameters,
+      },
+      {
+        name: recommendMealTool.definition.name,
+        description: recommendMealTool.definition.description,
+        input_schema: recommendMealTool.definition.parameters,
       },
     ];
     if (remindTool.enabled) {
@@ -102,6 +108,8 @@ class ClaudeBackend {
               content = await fetchUrlTool.execute(block.input);
             } else if (block.name === searchMapTool.definition.name) {
               content = await searchMapTool.execute(block.input);
+            } else if (block.name === recommendMealTool.definition.name) {
+              content = await recommendMealTool.execute(block.input);
             } else if (block.name === userProfileTool.getDefinition.name) {
               content = await userProfileTool.getProfile(block.input, { chatId, userId, username });
             } else if (block.name === userProfileTool.updateDefinition.name) {

@@ -158,4 +158,4 @@ async function execute({ query, lat, lon, limit }) {
     .join("\n\n");
 }
 
-module.exports = { definition, execute };
+module.exports = { definition, execute, formatPlaceResult, PLACES_BASE };

@@ -2,6 +2,7 @@ const { GoogleGenAI } = require("@google/genai");
 const remindTool = require("../tools/remind");
 const fetchUrlTool = require("../tools/fetch-url");
 const searchMapTool = require("../tools/search-map");
+const recommendMealTool = require("../tools/recommend-meal");
 const userProfileTool = require("../tools/user-profile");
 
 class GeminiBackend {
@@ -55,6 +56,11 @@ class GeminiBackend {
         description: searchMapTool.definition.description,
         parameters: searchMapTool.definition.parameters,
       },
+      {
+        name: recommendMealTool.definition.name,
+        description: recommendMealTool.definition.description,
+        parameters: recommendMealTool.definition.parameters,
+      },
     ];
     if (remindTool.enabled) {
       functionDeclarations.push({
@@ -104,6 +110,8 @@ class GeminiBackend {
             result = await fetchUrlTool.execute(p.functionCall.args);
           } else if (p.functionCall.name === searchMapTool.definition.name) {
             result = await searchMapTool.execute(p.functionCall.args);
+          } else if (p.functionCall.name === recommendMealTool.definition.name) {
+            result = await recommendMealTool.execute(p.functionCall.args);
           } else if (p.functionCall.name === remindTool.definition.name) {
             result = await remindTool.execute(p.functionCall.args, { chatId });
           } else if (p.functionCall.name === userProfileTool.getDefinition.name) {

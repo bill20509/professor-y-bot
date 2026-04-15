@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "NODE_ENV=development nodemon index.js",
+    "test": "node --test",
     "setup:db": "node scripts/setup-db.js",
     "dev:db:setup": "yarn dev:db:generate && yarn dev:db:push",
     "dev:db:generate": "prisma generate --schema=prisma/schema.dev.prisma",

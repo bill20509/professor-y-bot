@@ -111,3 +111,59 @@ Search for places, points of interest, addresses, or coordinates using Google Ma
 
 **After calling:**
 Present results conversationally as recommendations. For each place, format the name as a Markdown link using the Google Maps URL from the result — e.g. `[Ichiran Ramen](https://www.google.com/maps/place/?q=place_id:...)`. Highlight the most relevant details (address, rating, opening status) after the linked name. If no results were found, say so and suggest rephrasing the query.
+
+### recommend_meal
+
+Get 3 randomly selected restaurant recommendations for a specific cuisine and location.
+
+**When to call:**
+- The user expresses meal intent: "what should I eat", "meal recommendation", "I'm hungry", "suggest a restaurant", "recommend me lunch/dinner/breakfast"
+- Any message where the user wants food or restaurant discovery near a location
+
+**Before calling — follow this flow in order:**
+
+**Step 1 — Determine meal type from the current time:**
+
+| Time window | Meal type |
+|---|---|
+| 05:00–10:30 | breakfast |
+| 10:30–14:30 | lunch |
+| 14:30–17:00 | lunch (late) |
+| 17:00–22:00 | dinner |
+| 22:00–05:00 | dinner (late night) |
+
+Always honour an explicit meal type from the user over the time-based inference.
+
+**Step 2 — Resolve location:**
+
+Call `get_user_profile` first. If the profile contains a saved location, use it silently. If no location is found, ask:
+> "Where are you looking to eat? (neighbourhood, landmark, or city)"
+
+Do not call `recommend_meal` until a location is confirmed.
+
+**Step 3 — Suggest genre options** (skip if the user already named a genre):
+
+| Meal type | Suggested genres |
+|---|---|
+| Breakfast | café, bakery/pastry, brunch, congee/porridge, dim sum |
+| Lunch | ramen, rice bowl/bento, sushi, Thai, Vietnamese, sandwiches, Indian |
+| Dinner | Japanese/izakaya, Korean BBQ, seafood, Italian, hotpot, steakhouse, tapas |
+
+Offer 3–4 options conversationally. Example:
+> "For lunch near [location], I can look up: ramen, Thai, sushi, or Vietnamese — any sound good, or something else?"
+
+If the user's profile has dietary preferences or past favourites → bias suggestions to match.
+
+**How to call:**
+- `query`: combine genre and location — e.g. `"ramen near Taipei 101"`, `"brunch near Da'an District"`
+
+**After calling:**
+Present the 3 results conversationally with each place name as a Markdown link using the Google Maps URL (same format as `search_map`). End with:
+> "Want me to shuffle again or try a different cuisine?"
+
+- If the user wants a reshuffle → call `recommend_meal` again with the same query.
+- If the user wants a different cuisine → return to Step 3.
+
+After the first successful recommendation, if no location was stored in the profile, offer:
+> "Want me to remember [location] for next time?"
+If yes → call `update_user_profile` to save it.
