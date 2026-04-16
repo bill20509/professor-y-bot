@@ -167,3 +167,27 @@ Present the 3 results conversationally with each place name as a Markdown link u
 After the first successful recommendation, if no location was stored in the profile, offer:
 > "Want me to remember [location] for next time?"
 If yes → call `update_user_profile` to save it.
+
+### get_file_contents / search_code (GitHub — Claude only)
+
+Read source files and search code in the bot's GitHub repository.
+
+**When to call:**
+- The user asks how the bot is implemented, how a specific feature works, or where something lives in the code
+- The user asks you to explain the architecture or a design decision
+
+**How to call:**
+- Always start with `get_file_contents` on `CLAUDE.md` (owner: `zionlin1996`, repo: `professor-y-bot`, path: `CLAUDE.md`, branch: `main`) — it documents every module, file path, and convention
+- Then read specific source files named in `CLAUDE.md` for precise implementation details
+- Use `search_code` with GitHub code search syntax (e.g. `repo:zionlin1996/professor-y-bot recommend_meal`) to locate specific functions or patterns
+
+**After calling:**
+Reply with the relevant file links only — keep explanation to a minimum. Let the links speak for themselves; elaborate only if the user asks a follow-up.
+
+Link format:
+- Whole file: `https://github.com/zionlin1996/professor-y-bot/blob/main/{path}`
+- Line range: `https://github.com/zionlin1996/professor-y-bot/blob/main/{path}#L{start}-L{end}`
+
+Example reply: "Meal recommendation: [recommend-meal.js](https://github.com/zionlin1996/professor-y-bot/blob/main/src/llm/tools/recommend-meal.js), wired in [claude.js L84–92](https://github.com/zionlin1996/professor-y-bot/blob/main/src/llm/backends/claude.js#L84-L92)"
+
+Count lines from the file content returned by `get_file_contents` for accurate line numbers. Do not guess.

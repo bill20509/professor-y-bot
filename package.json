@@ -26,6 +26,10 @@
     "llm",
     "proxy"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zionlin1996/professor-y-bot"
+  },
   "author": "",
   "license": "MIT",
   "dependencies": {

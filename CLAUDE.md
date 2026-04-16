@@ -76,6 +76,7 @@ captain-definition            ← CapRover deployment config
 | `GEMINI_API_KEY` | Optional | — | Google Gemini API key; enables Gemini models in `/model` |
 | `LUMO_API_KEY` | Optional | — | Lumo API key; enables Lumo models in `/model` |
 | `GOOGLE_MAPS_API_KEY` | Optional | — | Google Maps API key; required for `search_map` tool (Places API + Geocoding API) |
+| `GITHUB_TOKEN` | Optional | — | GitHub Personal Access Token (read scope); required for GitHub MCP code search tools on the Claude backend |
 | `LLM_SYSTEM_PROMPT` | No | — | Extra instructions appended after the built-in Professor Y system prompt |
 | `PRIVATE_CHAT_ALLOWED_USERS` | No | — | Comma-separated Telegram user IDs allowed to use private chat; empty = no one |
 | `EXTERNAL_URL` | Production | — | Public URL for webhook registration |
@@ -290,6 +291,21 @@ The bot recommends restaurants for breakfast, lunch, or dinner based on the user
 - **Implementation**: `src/llm/tools/recommend-meal.js` — calls Google Places Text Search with `limit: 20`, applies Fisher-Yates shuffle in-place, returns the top 3 results formatted with `formatPlaceResult` (re-exported from `search-map.js`)
 - **Requires**: `GOOGLE_MAPS_API_KEY` env var (same key as `search_map`); returns an error string to the LLM if unset
 - **Tool guidance**: `src/llm/TOOLS.md` contains full LLM orchestration instructions including the genre pool tables and post-recommendation flow
+
+## GitHub source code lookup
+
+The Claude backend can read source files and search code in this repository via the GitHub MCP server, so users can ask precise questions about how the bot is implemented.
+
+- **Trigger**: Any question about the bot's implementation, architecture, a specific feature, or where code is located
+- **Tools exposed**: `get_file_contents` (read a file at a given path/branch) and `search_code` (GitHub code search syntax)
+- **Flow**: Claude always starts by reading `CLAUDE.md` from the repo to locate the relevant files, then reads the specific source files for precise implementation details
+- **Mechanism**: Both Claude and OpenAI execute MCP tools server-side — no custom dispatch needed in the tool loop
+  - **Claude**: `client.beta.messages.create()` with `betas: ["mcp-client-2025-11-20"]`; toolset configured via `mcp_servers` + `mcp_toolset` entry in `tools`
+  - **OpenAI**: `client.responses.create()` with `{ type: "mcp", server_label, server_url, headers, allowed_tools }` entry in `tools`
+- **MCP server**: `https://api.githubcopilot.com/mcp/` (GitHub's hosted Copilot MCP endpoint); allowlisted to `get_file_contents` and `search_code` only
+- **Requires**: `GITHUB_TOKEN` env var (GitHub Personal Access Token with read scope)
+- **Supported backends**: Claude and OpenAI. Gemini (experimental SDK-only, not wired up) and Lumo (no MCP support) are excluded.
+- **Tool guidance**: `src/llm/TOOLS.md` instructs the LLM when and how to call the GitHub tools
 
 ## User profiles
 

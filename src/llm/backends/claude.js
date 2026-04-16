@@ -81,10 +81,28 @@ class ClaudeBackend {
       );
     }
 
+    tools.push({
+      type: "mcp_toolset",
+      mcp_server_name: "github",
+      default_config: { enabled: false },
+      configs: {
+        get_file_contents: { enabled: true },
+        search_code: { enabled: true },
+      },
+    });
+
     const params = {
       model: this.model,
       max_tokens: 4096,
       tools,
+      mcp_servers: [
+        {
+          type: "url",
+          url: "https://api.githubcopilot.com/mcp/",
+          name: "github",
+          authorization_token: process.env.GITHUB_TOKEN,
+        },
+      ],
       messages: [...conversationMessages],
     };
 
@@ -92,7 +110,10 @@ class ClaudeBackend {
       params.system = systemMessage.content;
     }
 
-    let response = await this.client.messages.create(params);
+    const call = (p) =>
+      this.client.beta.messages.create({ ...p, betas: ["mcp-client-2025-11-20"] });
+
+    let response = await call(params);
 
     while (response.stop_reason === "tool_use") {
       params.messages.push({ role: "assistant", content: response.content });
@@ -120,7 +141,7 @@ class ClaudeBackend {
       );
 
       params.messages.push({ role: "user", content: toolResults });
-      response = await this.client.messages.create(params);
+      response = await call(params);
     }
 
     return response.content

@@ -85,6 +85,14 @@ class OpenAIBackend {
       );
     }
 
+    tools.push({
+      type: "mcp",
+      server_label: "github",
+      server_url: "https://api.githubcopilot.com/mcp/",
+      headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` },
+      allowed_tools: ["get_file_contents", "search_code"],
+    });
+
     const params = {
       model: this.model,
       input: inputMessages,

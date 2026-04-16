@@ -28,6 +28,10 @@ function formatReply(text) {
       .replace(/<hr\s*\/?>/g, "\n")
       // Strip any remaining unsupported tags, preserving: b, i, u, s, code, pre, a, blockquote
       .replace(/<(?!\/?(?:b|i|u|s|code|pre|a|blockquote)\b)[^>]*>/g, "")
+      // Telegram does not support any nested tags inside <a> — strip inner tags from link content
+      .replace(/<a(\s[^>]*)?>([\s\S]*?)<\/a>/g, (_, attrs, content) =>
+        `<a${attrs ?? ""}>${content.replace(/<[^>]+>/g, "")}</a>`,
+      )
       // Collapse excessive newlines (marked adds \n after blocks, replacements add more)
       .replace(/\n{3,}/g, "\n\n")
       .trim()
