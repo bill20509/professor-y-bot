@@ -8,7 +8,9 @@ The bot activates in group chats whenever it is **@mentioned** — either in a r
 
 **Forwarded messages are always ignored** — if `msg.forward_origin` is set, the bot silently skips the message regardless of chat type or mention.
 
-**`!noreply` suppresses the LLM** — if the user message contains `!noreply` anywhere, preprocessing returns `null` immediately and the message is never sent to the LLM. No reply is sent. Handled in `src/libs/preprocess.js`.
+**`!noreply` suppresses the LLM** — if the user message contains `!noreply` anywhere, the message is dropped immediately before any processing. No reply is sent. Handled in `index.js`.
+
+**`!info` appends metadata** — if the user message contains `!info` anywhere, the token is stripped before the LLM sees it and the bot appends a `<code>` block to the bottom of its reply with the current model, thread ID, and archive link. Handled in `index.js`.
 
 **Group trigger — mention inside a reply:**
 1. User replies to any message and includes `@botname` in the reply text
@@ -31,6 +33,8 @@ index.js                      ← entry point, message routing
 src/
   bot.js                      ← EnhancedBot (extends node-telegram-bot-api)
   setup.js                    ← dev (polling) vs production (webhook) setup
+  constants/
+    commands.js               ← SLASH_COMMANDS, INLINE_COMMANDS, and BOT_COMMANDS (Telegram registration list)
   llm/
     index.js                  ← LLMClient: backend routing, chat orchestration
     Thread.js                 ← Thread class: history, persistence, message↔thread mapping
@@ -49,7 +53,9 @@ src/
     parseMessage.js           ← extracts chatId, userId, text from Telegram msg
     formatReply.js            ← converts LLM markdown output to Telegram HTML
     attachments.js            ← getLastImage() and toImageBlock() for image support
-    preprocess.js             ← slash-command handler (runs before LLM, returns null to short-circuit)
+    preprocess.js             ← bot command dispatcher (entity-based detection, runs before thread routing, returns true if handled)
+    getThreadUrl.js           ← getThreadUrl(thread): generates archive token and returns full EXTERNAL_URL/archive/{hash}
+    formatInfo.js             ← formatInfo(llm, thread, {format}): formats !info metadata block; format "html" (default) or "plain"
     exportHtml.js             ← renders thread history as self-contained HTML (used by GET /archive/:hash)
     redis.js                  ← shared Redis client (null when REDIS_PASSWORD unset)
     store.js                  ← thin wrapper around redis.js: null-guard + TTL, used by Thread
@@ -146,13 +152,14 @@ Production mode (`NODE_ENV=production`) disables polling and starts an Express s
 
 ## Conversation archive
 
-The `/export` command generates a shareable link to a read-only HTML view of a conversation thread.
+The `!info` inline action generates a shareable archive link embedded in the bot's reply.
 
-- **Trigger**: reply to any message in the thread and send `/export` (PM) or `@bot /export` (group)
+- **Trigger**: include `!info` anywhere in a message that the bot will process (group: `@bot !info ...` or in a thread reply; PM: `!info ...`)
+- **Output**: bot appends a `<code>` block to the bottom of its reply with model name, thread ID, and archive URL
 - **URL format**: `EXTERNAL_URL/archive/{hash}` — the hash is a 128-bit cryptographically random token (`crypto.randomBytes(16)`); security model is "secret link" (the hash is the only credential — no login required)
 - **Rendering**: `GET /archive/:hash` resolves the hash to a `threadId` via Redis, loads the thread, and renders `exportHtml` server-side on every request (always reflects current thread state)
 - **Expiry**: archive tokens use the same 7-day rolling TTL as all thread keys; expired links return 404
-- **Dev mode**: the Express server does not call `app.listen` in development (polling) mode, so archive links are only accessible in production. The `/export` command still generates a valid URL, but it will not resolve locally
+- **Dev mode**: the Express server does not call `app.listen` in development (polling) mode, so archive links are only accessible in production. The `!info` token still generates a valid URL, but it will not resolve locally
 
 ## Telegram setup notes
 
@@ -161,9 +168,9 @@ The `/export` command generates a shareable link to a read-only HTML view of a c
 
 ## Telegram command list
 
-Telegram stores a server-side list of bot commands (the "/" suggestions shown in clients). This list is set via the Bot API and **does not automatically update** when commands are added or removed from code.
+Bot commands are registered with Telegram automatically on startup via `setMyCommands`. The list is sourced from `BOT_COMMANDS` in `src/constants/commands.js` and grouped by scope before registration.
 
-To clear all registered commands after removing them from code:
+To clear all registered commands manually (e.g. after removing a command from code):
 
 ```sh
 TELEGRAM_BOT_TOKEN=<token> yarn clear-commands
@@ -172,7 +179,7 @@ yarn clear-commands
 ```
 
 - **Script**: `scripts/clear-commands.js` — calls `deleteMyCommands` across all scopes (default, private chats, group chats, admins), prints before/after state
-- Run this once whenever commands are removed from `src/libs/preprocess.js` to keep the Telegram UI in sync
+- Adding a new command: add it to both `COMMANDS` in `src/libs/preprocess.js` and `BOT_COMMANDS` in `src/constants/commands.js`
 
 ## Adding a new LLM backend
 
@@ -233,8 +240,8 @@ The default system prompt is assembled in `src/llm/index.js` by loading an order
 
 | Type | Trigger | Scope | Description |
 |---|---|---|---|
-| **Command action** | `/command` prefix | Group & PM | Slash commands handled in `src/libs/preprocess.js` before the LLM. In groups, requires `@mention` prefix. |
-| **Inline action** | `!` prefix | Group & PM | Tokens embedded anywhere in a message that trigger specific behaviour. Processed in `src/libs/preprocess.js`. |
+| **Command action** | `/command` prefix | Group & PM | Standard Telegram bot commands detected via `msg.entities` in `src/libs/preprocess.js`, before thread/mention routing. In groups, `/command@botname` form is required to avoid collisions with other bots. |
+| **Inline action** | `!` prefix | Group & PM | Tokens embedded anywhere in a message that trigger specific behaviour. Detected and processed in `index.js`. |
 | **Menu action** | Reply keyboard | PM only | Interactions driven by Telegram reply keyboards (the keyboard that replaces the text input). Must never be shown or accepted in group chats. |
 | **Choice action** | Inline keyboard | PM only | Interactions driven by Telegram inline keyboards (buttons attached to a message, handled via `callback_query`). Must never be shown or accepted in group chats. |
 
@@ -242,14 +249,14 @@ The default system prompt is assembled in `src/llm/index.js` by loading an order
 
 | Command | Scope | Description |
 |---|---|---|
-| `/model` | PM only | Shows current backend and model; admin also gets an inline keyboard to switch |
-| `/export` | Group & PM | Returns a shareable `EXTERNAL_URL/archive/{hash}` link; must be sent as a reply to a message in the thread |
+| `/model` | PM only | Shows current AI model; admin can switch provider and model via inline keyboard |
 
 **Inline actions:**
 
 | Token | Effect |
 |---|---|
 | `!noreply` | Suppresses the LLM — no reply is sent |
+| `!info` | Appends model name, thread ID, and archive link to the bottom of the bot's reply |
 
 **Menu actions:** none currently.
 
@@ -269,19 +276,19 @@ Keyword filters are a separate concept from actions. They are hardcoded string p
 |---|---|
 | `白爛+1` | Message silently dropped; pipeline stops immediately |
 
-## Slash commands (preprocess)
+## Bot commands (preprocess)
 
-Before a message reaches the LLM, `src/libs/preprocess.js` checks whether it exactly matches a registered slash command. If it does, the command handler runs, the bot replies directly, and `null` is returned to skip LLM processing. Non-command messages pass through unchanged.
+Before thread routing, `src/libs/preprocess.js` detects standard Telegram bot commands via `msg.entities` (entity type `bot_command` at offset 0). If a registered handler is found, it runs and the message bypasses the LLM entirely. In groups, commands with `@botname` suffix are required; commands addressed to another bot are ignored.
 
-**`COMMANDS`** — triggered via `@bot /command` in groups (after `@mention` is stripped) or `/command` directly in private chats:
+**`COMMANDS`** — keyed by `SLASH_COMMANDS.*` constants; handler signature:
 ```js
-"/mycommand": ({ llm, bot, msg, chatId }) => "reply string",
+"/mycommand": ({ llm, bot, msg, chatId, isGroup }) => "reply string",
 ```
+Return a string to send as a reply, or `null` to handle sending inside the handler.
 
-| Command | Trigger | Response |
+| Command | Scope | Response |
 |---|---|---|
-| `/model` | PM only | Shows current backend and model; admin also gets an inline keyboard to switch |
-| `/export` | Group & PM | Returns a shareable `EXTERNAL_URL/archive/{hash}` link for the conversation; must be sent as a reply to any message in the thread |
+| `/model` | PM only | Shows current AI model; admin can switch provider and model via inline keyboard |
 
 ## Dynamic model switching
 

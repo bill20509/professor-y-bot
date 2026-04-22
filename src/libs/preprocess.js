@@ -1,14 +1,15 @@
-const Thread = require("../llm/Thread");
+const { SLASH_COMMANDS } = require("../constants/commands");
 
 const ADMIN_USERNAME = "yanglin1112";
 
 /**
- * Command registry. Triggered via `@bot /command` in groups (after @mention is stripped)
- * or `/command` in private chats. Handlers may be async; returning null suppresses the
- * default reply (use this when the handler sends its own message).
+ * Command registry for standard Telegram bot commands.
+ * Triggered by sending /command in any chat (or /command@botname in groups).
+ * Handlers may be async; returning null suppresses the default reply
+ * (use this when the handler sends its own message).
  */
 const COMMANDS = {
-  "/model": async ({ msg, bot, chatId, llm, isGroup }) => {
+  [SLASH_COMMANDS.MODEL]: async ({ msg, bot, chatId, llm, isGroup }) => {
     if (isGroup) return null;
 
     if (msg.from?.username !== ADMIN_USERNAME) {
@@ -41,45 +42,42 @@ const COMMANDS = {
     );
     return null;
   },
-
-  "/export": async ({ msg }) => {
-    const replyToId = msg.reply_to_message?.message_id;
-    const thread = replyToId ? await Thread.resolve(replyToId) : null;
-
-    if (!thread || thread.history.length === 0) {
-      return "Nothing to export. Reply to a message in the conversation thread you want to export.";
-    }
-
-    const hash = await thread.archive();
-    const base = process.env.EXTERNAL_URL || "http://localhost";
-    return `${base}/archive/${hash}`;
-  },
 };
 
 /**
- * Preprocess a message before it reaches the LLM.
+ * Detect and dispatch a standard Telegram bot command from the message entities.
+ * Must be called before any thread/mention routing so commands bypass the LLM flow.
  *
- * Returns the (possibly transformed) message to pass to the next stage,
- * or null/undefined if the message was fully handled here and LLM processing
- * should be skipped.
+ * Returns true if a command was handled (caller should stop processing),
+ * false if the message is not a bot command or no handler is registered for it.
  *
- * @param {string|Array} message - the resolved user message (text or content array)
- * @param {object}       ctx
- * @param {object}       ctx.msg     - Telegram message object
- * @param {object}       ctx.bot     - EnhancedBot instance
- * @param {object}       ctx.llm     - LLMClient instance
- * @param {number}       ctx.chatId
- * @param {boolean}      ctx.isGroup
- * @returns {Promise<string|Array|null>}
+ * In groups, commands addressed to another bot (/cmd@otherbot) are ignored.
+ *
+ * @param {object}  ctx
+ * @param {object}  ctx.msg
+ * @param {object}  ctx.bot
+ * @param {object}  ctx.llm
+ * @param {number}  ctx.chatId
+ * @param {boolean} ctx.isGroup
+ * @returns {Promise<boolean>}
  */
-async function preprocess(message, ctx) {
-  const { msg, bot, chatId } = ctx;
+async function preprocess(ctx) {
+  const { msg, bot, chatId, isGroup } = ctx;
 
-  const text = typeof message === "string" ? message.trim() : "";
+  const commandEntity = msg.entities?.find(
+    (e) => e.type === "bot_command" && e.offset === 0,
+  );
+  if (!commandEntity) return false;
 
-  const handler = COMMANDS[text];
+  const raw = msg.text.slice(0, commandEntity.length); // e.g. "/model" or "/model@botname"
+  const [command, addressee] = raw.split("@");
 
-  if (!handler) return message;
+  // In groups, ignore commands addressed to a different bot
+  const botUsername = process.env.TELEGRAM_BOT_USERNAME;
+  if (isGroup && addressee && addressee !== botUsername) return false;
+
+  const handler = COMMANDS[command];
+  if (!handler) return false;
 
   const reply = await handler(ctx);
   if (reply != null) {
@@ -87,8 +85,7 @@ async function preprocess(message, ctx) {
       reply_to_message_id: msg.message_id,
     });
   }
-
-  return null;
+  return true;
 }
 
 module.exports = preprocess;

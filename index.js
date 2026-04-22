@@ -8,6 +8,8 @@ const formatReply = require("./src/libs/formatReply");
 const exportHtml = require("./src/libs/exportHtml");
 const { getLastImage, toImageBlock } = require("./src/libs/attachments");
 const preprocess = require("./src/libs/preprocess");
+const formatInfo = require("./src/libs/formatInfo");
+const { INLINE_COMMANDS, BOT_COMMANDS } = require("./src/constants/commands");
 const startSubscriber = require("./src/libs/subscriber");
 const express = require("express");
 
@@ -31,14 +33,19 @@ bot.onMessage(async (msg) => {
     const chatId = msg.chat.id;
 
     const text = msg.text || msg.caption || "";
-    if (msg.text.includes("白爛+1")) return; // keyword filter: silently drop
-    if (msg.text.includes("!noreply")) return; // inline action: suppress LLM reply
+    if (text.includes("白爛+1")) return; // keyword filter: silently drop
+    if (text.includes(INLINE_COMMANDS.NOREPLY)) return; // inline action: suppress LLM reply
+    const showInfo = text.includes(INLINE_COMMANDS.INFO); // inline action: append model/thread/archive info
+
+    const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
+
+    // Handle bot commands before thread/mention routing — commands bypass the LLM entirely
+    if (await preprocess({ msg, bot, llm, chatId, isGroup })) return;
 
     const msgAttachment = getLastImage(msg);
     const replyAttachment = getLastImage(msg.reply_to_message);
     const targetAttachment = msgAttachment || replyAttachment;
 
-    const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
     let userMessage = text;
     let thread;
 
@@ -90,15 +97,15 @@ bot.onMessage(async (msg) => {
         (await Thread.create());
     }
 
-    const preprocessed = await preprocess(userMessage, {
-      msg,
-      bot,
-      llm,
-      chatId,
-      isGroup,
-    });
-    if (preprocessed == null) return; // command was handled, skip LLM
-    userMessage = preprocessed;
+    // Strip !info token — the flag is captured; the token itself is not part of the user intent
+    if (showInfo) {
+      userMessage =
+        typeof userMessage === "string"
+          ? userMessage
+              .replace(new RegExp(INLINE_COMMANDS.INFO, "g"), "")
+              .trim()
+          : userMessage;
+    }
 
     // Prepend sender so the LLM can distinguish between users in the same thread
     const senderName = msg.from?.username || msg.from?.first_name || "user";
@@ -126,16 +133,20 @@ bot.onMessage(async (msg) => {
       username: msg.from?.username || msg.from?.first_name,
     });
 
-    const options = { reply_to_message_id: msg.message_id };
+    const replyOptions = { reply_to_message_id: msg.message_id };
     let sentMsg;
     try {
-      sentMsg = await bot.sendMessage(chatId, formatReply(reply), {
-        ...options,
+      const info = showInfo ? await formatInfo(llm, thread) : "";
+      sentMsg = await bot.sendMessage(chatId, formatReply(reply) + info, {
+        ...replyOptions,
         parse_mode: "HTML",
       });
     } catch {
+      const info = showInfo
+        ? await formatInfo(llm, thread, { format: "plain" })
+        : "";
       // Fallback to plain text if Telegram rejects the HTML
-      sentMsg = await bot.sendMessage(chatId, reply, options);
+      sentMsg = await bot.sendMessage(chatId, reply + info, replyOptions);
     }
 
     // Track the user's message and the bot's response so replies to either
@@ -229,6 +240,16 @@ bot.on("callback_query", async (query) => {
 async function main() {
   await llm.init();
   startSubscriber(bot);
+
+  // Register bot commands with Telegram, grouped by scope
+  const scopeGroups = BOT_COMMANDS.reduce((acc, { command, description, scope }) => {
+    const key = JSON.stringify(scope);
+    (acc[key] ??= { scope, commands: [] }).commands.push({ command, description });
+    return acc;
+  }, {});
+  for (const { scope, commands } of Object.values(scopeGroups)) {
+    await bot.setMyCommands(commands, { scope });
+  }
 
   const app = express();
   app.use(express.json());
