@@ -17,7 +17,10 @@ const COMMANDS = {
 
     const groups = await llm.listModels();
     if (!groups.length) {
-      await bot.sendMessage(chatId, "No models available — check your API keys.");
+      await bot.sendMessage(
+        chatId,
+        "No models available — check your API keys.",
+      );
       return null;
     }
 
@@ -73,8 +76,6 @@ async function preprocess(message, ctx) {
   const { msg, bot, chatId } = ctx;
 
   const text = typeof message === "string" ? message.trim() : "";
-
-  if (text.includes("!noreply")) return null;
 
   const handler = COMMANDS[text];
 

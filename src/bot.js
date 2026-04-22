@@ -29,8 +29,6 @@ class EnhancedBot extends TelegramBot {
     });
 
     this.on("message", async (msg) => {
-      if (!msg.text && !attachments.getLastImage(msg)) return;
-
       return this.handleMessage(msg);
     });
   }

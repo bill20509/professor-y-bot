@@ -25,11 +25,15 @@ const llm = new LLMClient();
 
 bot.onMessage(async (msg) => {
   try {
-    if (msg.forward_origin) return;
+    if (!msg.text && !getLastImage(msg)) return; // ignore non-text, non-image messages
+    if (msg.forward_origin) return; // ignore forwarded messages
 
     const chatId = msg.chat.id;
 
     const text = msg.text || msg.caption || "";
+    if (msg.text.includes("白爛+1")) return; // keyword filter: silently drop
+    if (msg.text.includes("!noreply")) return; // inline action: suppress LLM reply
+
     const msgAttachment = getLastImage(msg);
     const replyAttachment = getLastImage(msg.reply_to_message);
     const targetAttachment = msgAttachment || replyAttachment;
@@ -39,8 +43,6 @@ bot.onMessage(async (msg) => {
     let thread;
 
     if (isGroup) {
-      if (text.includes("白爛+1")) return;
-
       const replyToId = msg.reply_to_message?.message_id;
       const isMentioned = text.includes(`@${botUsername}`);
       thread = replyToId ? await Thread.resolve(replyToId) : null;
@@ -69,21 +71,23 @@ bot.onMessage(async (msg) => {
             .trim();
         }
       } else {
-        return;
+        return; // not a tracked reply and no @mention — ignore
       }
 
-      if ((!userMessage || userMessage === "") && !targetAttachment) return;
+      if ((!userMessage || userMessage === "") && !targetAttachment) return; // nothing to send
     } else {
       // Private chat: restricted to allowlist
       if (!allowedUserIds.has(msg.from?.id)) {
         await bot.sendMessage(
           chatId,
-          "Sorry, private chat access is restricted."
+          "Sorry, private chat access is restricted.",
         );
         return;
       }
       const replyToId = msg.reply_to_message?.message_id;
-      thread = (replyToId ? await Thread.resolve(replyToId) : null) ?? await Thread.create();
+      thread =
+        (replyToId ? await Thread.resolve(replyToId) : null) ??
+        (await Thread.create());
     }
 
     const preprocessed = await preprocess(userMessage, {
@@ -93,7 +97,7 @@ bot.onMessage(async (msg) => {
       chatId,
       isGroup,
     });
-    if (preprocessed == null) return;
+    if (preprocessed == null) return; // command was handled, skip LLM
     userMessage = preprocessed;
 
     // Prepend sender so the LLM can distinguish between users in the same thread
@@ -142,16 +146,15 @@ bot.onMessage(async (msg) => {
     console.error("Error handling message:", error);
     await bot.sendMessage(
       msg.chat.id,
-      "Sorry, something went wrong. Please try again."
+      "Sorry, something went wrong. Please try again.",
     );
   }
 });
 
-
 bot.on("callback_query", async (query) => {
   const { data, message, from } = query;
   if (from?.username !== ADMIN_USERNAME) {
-    await bot.answerCallbackQuery(query.id);
+    await bot.answerCallbackQuery(query.id); // silently dismiss for non-admins
     return;
   }
 
@@ -163,7 +166,9 @@ bot.on("callback_query", async (query) => {
       // Show model list for chosen provider
       const backendName = data.slice(3);
       const models = llm._modelListCache[backendName] || [];
-      const rows = models.map((m, i) => [{ text: m, callback_data: `ms:${backendName}:${i}` }]);
+      const rows = models.map((m, i) => [
+        { text: m, callback_data: `ms:${backendName}:${i}` },
+      ]);
       rows.push([{ text: "← Back", callback_data: "mb" }]);
       await bot.editMessageText(`<b>${backendName}</b> — select a model:`, {
         chat_id: chatId,
@@ -172,23 +177,26 @@ bot.on("callback_query", async (query) => {
         reply_markup: { inline_keyboard: rows },
       });
       await bot.answerCallbackQuery(query.id);
-
     } else if (data.startsWith("ms:")) {
       // Select a model
       const [, backendName, indexStr] = data.split(":");
       const modelName = llm._modelListCache[backendName]?.[parseInt(indexStr)];
       if (modelName) {
         await llm.setActiveModel(backendName, modelName);
-        await bot.editMessageText(`✓ Switched to <b>${backendName} / ${modelName}</b>`, {
-          chat_id: chatId,
-          message_id: messageId,
-          parse_mode: "HTML",
+        await bot.editMessageText(
+          `✓ Switched to <b>${backendName} / ${modelName}</b>`,
+          {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: "HTML",
+          },
+        );
+        await bot.answerCallbackQuery(query.id, {
+          text: `Now using ${modelName}`,
         });
-        await bot.answerCallbackQuery(query.id, { text: `Now using ${modelName}` });
       } else {
         await bot.answerCallbackQuery(query.id, { text: "Model not found" });
       }
-
     } else if (data === "mb") {
       // Back to provider list
       const rows = [];
@@ -201,12 +209,15 @@ bot.on("callback_query", async (query) => {
           })),
         );
       }
-      await bot.editMessageText(`Current: <b>${llm.providerInfo()}</b>\n\nChoose a provider:`, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: "HTML",
-        reply_markup: { inline_keyboard: rows },
-      });
+      await bot.editMessageText(
+        `Current: <b>${llm.providerInfo()}</b>\n\nChoose a provider:`,
+        {
+          chat_id: chatId,
+          message_id: messageId,
+          parse_mode: "HTML",
+          reply_markup: { inline_keyboard: rows },
+        },
+      );
       await bot.answerCallbackQuery(query.id);
     }
   } catch (err) {
