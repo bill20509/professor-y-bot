@@ -1,4 +1,5 @@
 const { SLASH_COMMANDS } = require("../constants/commands");
+const { getDb } = require("./db");
 
 const ADMIN_USERNAME = "yanglin1112";
 
@@ -9,9 +10,47 @@ const ADMIN_USERNAME = "yanglin1112";
  * (use this when the handler sends its own message).
  */
 const COMMANDS = {
-  [SLASH_COMMANDS.MODEL]: async ({ msg, bot, chatId, llm, isGroup }) => {
-    if (isGroup) return null;
+  [SLASH_COMMANDS.ME]: async ({ msg, bot, chatId }) => {
+    const username = msg.from?.username;
+    if (!username)
+      return "Unable to look up your profile — you don't have a Telegram username set.";
 
+    const db = getDb();
+    if (!db) return "Database not available.";
+
+    const record = await db.userProfile.findUnique({ where: { username } });
+    if (!record || !record.notes)
+      return `No profile on record for @${username}.`;
+
+    await bot.sendMessage(
+      chatId,
+      `<b>@${username}'s profile:</b>\n\n${record.notes}`,
+      { parse_mode: "HTML", reply_to_message_id: msg.message_id },
+    );
+    return null;
+  },
+
+  [SLASH_COMMANDS.FORGET]: async ({ msg }) => {
+    const username = msg.from?.username;
+    if (!username)
+      return "Unable to find your profile — you don't have a Telegram username set.";
+
+    const db = getDb();
+    if (!db) return "Database not available.";
+
+    const record = await db.userProfile.findUnique({ where: { username } });
+    if (!record || !record.notes)
+      return `No profile on record for @${username} — nothing to clear.`;
+
+    await db.userProfile.update({
+      where: { username },
+      data: { notes: "" },
+    });
+
+    return `Profile cleared for @${username}.`;
+  },
+
+  [SLASH_COMMANDS.MODEL]: async ({ msg, bot, chatId, llm }) => {
     if (msg.from?.username !== ADMIN_USERNAME) {
       return llm.providerInfo();
     }
@@ -72,9 +111,8 @@ async function preprocess(ctx) {
   const raw = msg.text.slice(0, commandEntity.length); // e.g. "/model" or "/model@botname"
   const [command, addressee] = raw.split("@");
 
-  // In groups, ignore commands addressed to a different bot
-  const botUsername = process.env.TELEGRAM_BOT_USERNAME;
-  if (isGroup && addressee && addressee !== botUsername) return false;
+  // All commands are PM only
+  if (isGroup) return false;
 
   const handler = COMMANDS[command];
   if (!handler) return false;

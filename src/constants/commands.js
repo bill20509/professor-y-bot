@@ -1,5 +1,7 @@
 const SLASH_COMMANDS = {
   MODEL: "/model",
+  ME: "/me",
+  FORGET: "/forget",
 };
 
 const INLINE_COMMANDS = {
@@ -12,11 +14,9 @@ const INLINE_COMMANDS = {
  * Each entry: { command, description, scope } where scope is a Telegram BotCommandScope object.
  */
 const BOT_COMMANDS = [
-  {
-    command: "model",
-    description: "Show current AI model; switch provider and model (admin only)",
-    scope: { type: "all_private_chats" },
-  },
+  { command: "model", description: "Show current AI model; switch provider and model (admin only)" },
+  { command: "me", description: "Show your saved profile notes" },
+  { command: "forget", description: "Clear your saved profile notes" },
 ];
 
 module.exports = { SLASH_COMMANDS, INLINE_COMMANDS, BOT_COMMANDS };

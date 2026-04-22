@@ -241,15 +241,11 @@ async function main() {
   await llm.init();
   startSubscriber(bot);
 
-  // Register bot commands with Telegram, grouped by scope
-  const scopeGroups = BOT_COMMANDS.reduce((acc, { command, description, scope }) => {
-    const key = JSON.stringify(scope);
-    (acc[key] ??= { scope, commands: [] }).commands.push({ command, description });
-    return acc;
-  }, {});
-  for (const { scope, commands } of Object.values(scopeGroups)) {
-    await bot.setMyCommands(commands, { scope });
-  }
+  // Register bot commands with Telegram — all commands are PM only
+  await bot.setMyCommands(
+    BOT_COMMANDS.map(({ command, description }) => ({ command, description })),
+    { scope: { type: "all_private_chats" } },
+  );
 
   const app = express();
   app.use(express.json());

@@ -170,7 +170,7 @@ The `!info` inline action generates a shareable archive link embedded in the bot
 
 ## Telegram command list
 
-Bot commands are registered with Telegram automatically on startup via `setMyCommands`. The list is sourced from `BOT_COMMANDS` in `src/constants/commands.js` and grouped by scope before registration.
+Bot commands are registered with Telegram automatically on startup via `setMyCommands`. The list is sourced from `BOT_COMMANDS` in `src/constants/commands.js`. All commands are PM only — registered under `{ type: "all_private_chats" }` scope.
 
 To clear all registered commands manually (e.g. after removing a command from code):
 
@@ -247,11 +247,13 @@ The default system prompt is assembled in `src/llm/index.js` by loading an order
 | **Menu action** | Reply keyboard | PM only | Interactions driven by Telegram reply keyboards (the keyboard that replaces the text input). Must never be shown or accepted in group chats. |
 | **Choice action** | Inline keyboard | PM only | Interactions driven by Telegram inline keyboards (buttons attached to a message, handled via `callback_query`). Must never be shown or accepted in group chats. |
 
-**Command actions:**
+**Command actions (all PM only):**
 
-| Command | Scope | Description |
-|---|---|---|
-| `/model` | PM only | Shows current AI model; admin can switch provider and model via inline keyboard |
+| Command | Description |
+|---|---|
+| `/model` | Shows current AI model; admin can switch provider and model via inline keyboard |
+| `/me` | Fetches and displays the user's saved profile notes directly from DB; no LLM involved |
+| `/forget` | Clears the user's profile notes field (keeps the DB row); no LLM involved |
 
 **Inline actions:**
 
@@ -288,9 +290,11 @@ Before thread routing, `src/libs/preprocess.js` detects standard Telegram bot co
 ```
 Return a string to send as a reply, or `null` to handle sending inside the handler.
 
-| Command | Scope | Response |
-|---|---|---|
-| `/model` | PM only | Shows current AI model; admin can switch provider and model via inline keyboard |
+| Command | Response |
+|---|---|
+| `/model` | Shows current AI model; admin can switch provider and model via inline keyboard |
+| `/me` | Shows the user's profile notes from DB, or a "no record" message if none exists |
+| `/forget` | Clears the user's profile notes field (row kept); confirms success or reports nothing to clear |
 
 ## Dynamic model switching
 
