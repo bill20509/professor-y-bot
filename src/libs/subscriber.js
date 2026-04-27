@@ -8,6 +8,10 @@ const Redis = require("ioredis");
  * Expected payload shape: { chat_id: number, text: string }
  */
 function startSubscriber(bot) {
+  if (!process.env.REDIS_PASSWORD) {
+    console.log("[subscriber] REDIS_PASSWORD not set — skipping pub/sub");
+    return;
+  }
   // @todo: make Redis connection configurable via env var
   const subscriber = new Redis({
     host: "srv-captain--redis",

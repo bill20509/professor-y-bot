@@ -1,9 +1,8 @@
 const { readFileSync } = require("fs");
 const { join } = require("path");
-const store = require("../libs/store");
 
 function loadPrompt(filename) {
-  return readFileSync(join(__dirname, "prompts", filename), "utf8")
+  return readFileSync(join(__dirname, "../llm/prompts", filename), "utf8")
     .trim()
     .replace(/%BOT_NAME%/g, process.env.TELEGRAM_BOT_USERNAME || "bot");
 }
@@ -15,18 +14,19 @@ const DEFAULT_SYSTEM_PROMPT = [
 ].join("\n\n");
 
 const BACKENDS = {
-  openai: () => require("./backends/openai"),
-  claude: () => require("./backends/claude"),
-  gemini: () => require("./backends/gemini"),
-  lumo: () => require("./backends/lumo"),
+  openai: () => require("../llm/backends/openai"),
+  claude: () => require("../llm/backends/claude"),
+  gemini: () => require("../llm/backends/gemini"),
+  lumo: () => require("../llm/backends/lumo"),
 };
 
 const DEFAULT_BACKEND = "claude";
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 const SETTINGS_KEY = "setting:active_model";
 
-class LLMClient {
-  constructor() {
+class LLMService {
+  constructor({ store } = {}) {
+    this._store = store;
     this._modelListCache = {};
     this._initBackend(DEFAULT_BACKEND, DEFAULT_MODEL);
   }
@@ -42,7 +42,7 @@ class LLMClient {
 
   /** Load persisted model selection from Redis. Call once on startup. */
   async init() {
-    const stored = await store.get(SETTINGS_KEY);
+    const stored = await this._store?.get(SETTINGS_KEY);
     if (!stored) return;
     try {
       const { backend, model } = JSON.parse(stored);
@@ -75,15 +75,32 @@ class LLMClient {
   /** Switch the active backend+model and persist the choice. */
   async setActiveModel(backendName, modelName) {
     this._initBackend(backendName, modelName);
-    await store.set(SETTINGS_KEY, JSON.stringify({ backend: backendName, model: modelName }), null);
+    await this._store?.set(SETTINGS_KEY, JSON.stringify({ backend: backendName, model: modelName }), null);
   }
 
   providerInfo() {
     return `${this.backendName} / ${this.backend.model}`;
   }
 
-  // thread.history must already contain the user message (appended via thread.appendMessage()).
-  async chat(thread, { chatId, userId, username } = {}) {
+  /** Backends with at least one cached model from the most recent listModels() call. */
+  availableBackends() {
+    return Object.keys(this._modelListCache);
+  }
+
+  /** Cached model names for a backend (empty array if none). */
+  models(backendName) {
+    return this._modelListCache[backendName] || [];
+  }
+
+  /** Cached model name at index, or undefined. */
+  modelAt(backendName, index) {
+    return this._modelListCache[backendName]?.[index];
+  }
+
+  // thread.history must already contain the user message (appended via threadService.appendMessage()).
+  // Appends the assistant reply to thread.history; caller is responsible for threadService.save().
+  async chat(thread, incoming) {
+    const { chatId, userId, username } = incoming;
     const tz = process.env.TZ || "UTC";
     const currentTime = `Current time: ${new Date().toLocaleString("en-US", { timeZone: tz, hour12: false, dateStyle: "full", timeStyle: "long" })} (${tz})`;
 
@@ -102,10 +119,9 @@ class LLMClient {
 
     const reply = await this.backend.complete(messages, { chatId, userId, username });
     thread.append("assistant", reply);
-    await thread.save({ replyModel: this.providerInfo() });
 
     return reply;
   }
 }
 
-module.exports = LLMClient;
+module.exports = LLMService;

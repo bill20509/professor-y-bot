@@ -1,19 +1,20 @@
 /**
  * Format the !info metadata block appended to bot replies.
  *
- * @param {LLMClient} llm
+ * @param {LLMService} llm
  * @param {Thread}    thread
  * @param {object}    [opts]
  * @param {"html"|"plain"} [opts.format="html"]
- * @returns {Promise<string>}
+ * @returns {string}
  */
 const DIVIDER = "─────────────────────";
 
-async function formatInfo(llm, thread, { format = "html" } = {}) {
+function formatInfo(llm, thread, { format = "html" } = {}) {
   const archiveUrl = thread.toPublicUrl();
-  const link = format === "html"
-    ? `<a href="${archiveUrl}">${archiveUrl}</a>`
-    : archiveUrl;
+  const link =
+    format === "html"
+      ? `<a href="${archiveUrl}">${archiveUrl}</a>`
+      : archiveUrl;
 
   return [
     "",

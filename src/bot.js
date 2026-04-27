@@ -1,9 +1,9 @@
 const TelegramBot = require("node-telegram-bot-api");
-const parseMessage = require("./libs/parseMessage");
-const attachments = require("./libs/attachments");
+const IncomingMessage = require("./dto/IncomingMessage");
 
 class EnhancedBot extends TelegramBot {
   handleMessage = () => {};
+  callbackHandlers = {};
 
   constructor(token, options) {
     super(token, {
@@ -29,17 +29,23 @@ class EnhancedBot extends TelegramBot {
     });
 
     this.on("message", async (msg) => {
-      return this.handleMessage(msg);
+      const incoming = new IncomingMessage(msg);
+      if (incoming.isCommand) {
+        const command = incoming.command;
+        const callback = this.callbackHandlers[command];
+        if (callback) {
+          return callback(incoming);
+        }
+      }
+      return this.handleMessage(incoming);
     });
-  }
-
-  async respond(msg, response) {
-    const { chatId } = parseMessage(msg);
-    await this.sendMessage(chatId, response);
   }
 
   onMessage(callback) {
     this.handleMessage = callback;
+  }
+  onCommand(command, callback) {
+    this.callbackHandlers[command] = callback;
   }
 }
 
