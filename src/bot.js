@@ -8,6 +8,7 @@ class EnhancedBot extends TelegramBot {
   constructor(token, options) {
     super(token, {
       polling: options.mode !== "production",
+      request: { family: 4 },
     });
 
     if (!token) {
