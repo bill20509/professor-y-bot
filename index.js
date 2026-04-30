@@ -92,20 +92,22 @@ bot.onMessage(async (message) => {
       message.chatId,
       "Sorry, something went wrong. Please try again.",
     );
-  } finally {
-    threadService.cleanup();
   }
 });
 
 for (const cmd of Object.values(SLASH_COMMANDS)) {
   bot.onCommand(cmd, (incoming) => {
     const services = createSeriviceContainer();
-    return services.get("botControl").handleCommand(incoming);
+    const botControl = services.get("botControl");
+    botControl.use(bot);
+    return botControl.handleCommand(incoming);
   });
 }
 bot.on("callback_query", (query) => {
   const services = createSeriviceContainer();
-  return services.get("botControl").handleCallback(query);
+  const botControl = services.get("botControl");
+  botControl.use(bot);
+  return botControl.handleCallback(query);
 });
 
 async function main() {

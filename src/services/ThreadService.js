@@ -65,7 +65,9 @@ class ThreadService {
 
   async create({ chatId, ephemeral = false } = {}) {
     const id = randomBytes(16).toString("hex");
-    await this._db.thread.create({ data: { id, chatId: String(chatId ?? ""), ephemeral } });
+    await this._db.thread.create({
+      data: { id, chatId: String(chatId ?? ""), ephemeral },
+    });
     if (ephemeral) {
       await this._store.set(threadKey(id), "[]");
     }
@@ -87,7 +89,10 @@ class ThreadService {
       // We fall back to a placeholder to avoid the "user messages must have non-empty content"
       // error from the Claude API. Ideally we should re-fetch the image via attachmentFileId
       // and reconstruct the full image block so the LLM retains visual context in long threads.
-      { role: "user", content: m.content || (m.attachmentFileId ? "[image]" : "[message]") },
+      {
+        role: "user",
+        content: m.content || (m.attachmentFileId ? "[image]" : "[message]"),
+      },
       ...(m.response ? [{ role: "assistant", content: m.response }] : []),
     ]);
     return new Thread(threadId, history);
@@ -112,11 +117,6 @@ class ThreadService {
     if (!threadId) return null;
     const raw = await this._store.get(threadKey(threadId));
     return new Thread(threadId, raw ? JSON.parse(raw) : [], true);
-  }
-
-  cleanup() {
-    this.current = null;
-    this._pendingMessageId = null;
   }
 
   async resolveOrCreate(incoming) {
