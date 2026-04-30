@@ -41,7 +41,7 @@ src/
   dto/
     IncomingMessage.js        ← pure DTO: parses raw Telegram msg synchronously, exposes rawContent/isValid/isCommand/inlineCommand() — no async, no DB
   services/
-    ThreadService.js          ← per-request service: thread create/load/resolve/resolveOrCreate(incoming), appendPrompt, updateReply; constructor takes { store, db, user } — incoming is passed to resolveOrCreate()
+    ThreadService.js          ← singleton service: thread create/load/resolve/resolveOrCreate(incoming), appendPrompt, updateReply; thread.ephemeral drives storage branching (Redis for ephemeral, DB for regular)
     BotControlService.js      ← instantiatable service: slash command dispatch + callback_query handling
     LLMService.js             ← instantiatable service: backend routing, chat orchestration
   llm/
@@ -208,17 +208,19 @@ yarn clear-commands
 
 Each bot interaction in a group starts a **new thread** with its own isolated conversation history. Replies to any message in the thread (bot or user) continue the same thread without requiring another `@mention`.
 
-Thread management lives in `src/services/ThreadService.js`. A new `ThreadService` instance is created per incoming message with an `IncomingMessage` DTO:
+Thread management lives in `src/services/ThreadService.js`. A singleton `ThreadService` is registered in the DI container; `resolveOrCreate(incoming)` is called per message to set `this.current`:
 
-- `new ThreadService({ store, db, user })` — singleton service; `store`/`db`/`user` injected for testability; `_dataSource` is set per-request in `resolveOrCreate()`
-- `threadService.resolveOrCreate(incoming)` — sets `_dataSource` ("db" for groups and non-stealth PM, "store" for stealth PM); resolves thread by reply or creates a new one; returns the `Thread` or `null`
-- `threadService.appendPrompt(prompt)` — appends user message to history; "store": tracks user `messageId → threadId` in Redis; "db": creates a `Message` row (stores `messageId`)
-- `threadService.updateReply(replyMessageId, { replyModel })` — finalises the exchange after the bot reply is sent; "store": serializes history to Redis + tracks bot reply `messageId → threadId` in Redis; "db": updates the pending `Message` row with `response`, `replyModel`, and `replyMessageId`
-- `threadService.resolve(replyToId)` — "store": Redis `msgKey` lookup; "db": `Message.findFirst` by `messageId OR replyMessageId`, then `load(threadId)`
+- `new ThreadService({ store, db, user })` — singleton service; `store`/`db`/`user` injected for testability
+- `threadService.resolveOrCreate(incoming)` — resolves thread by reply or creates a new one; for new PM threads sets `ephemeral = stealth && isPrivate`; returns the `Thread` or `null`
+- `threadService.appendPrompt(prompt)` — appends user message to history; ephemeral: tracks user `messageId → threadId` in Redis; regular: creates a `Message` row in DB (stores `messageId`)
+- `threadService.updateReply(replyMessageId, { replyModel })` — finalises the exchange after the bot reply is sent; ephemeral: serializes history to Redis + tracks bot reply `messageId → threadId` in Redis; regular: updates the pending `Message` row with `response`, `replyModel`, and `replyMessageId`
+- `threadService.resolve(replyToId)` — tries DB `Message.findFirst` by `messageId OR replyMessageId` first (regular); falls back to Redis `msgKey` lookup (ephemeral)
+- `threadService.load(threadId)` — loads regular thread history from DB `Message` rows; used by the archive route only; ephemeral threads have no `Message` rows and intentionally return empty → 404
+- `thread.ephemeral` — boolean set at creation time; drives all storage branching in `appendPrompt` and `updateReply`; stealth toggle mid-conversation does not change an existing thread's ephemeral flag
 - `thread.append(role, content)` — pure method on the Thread data class; called by `LLMService.chat()` for the assistant reply
 - `thread.serialize()` — strips image blocks from history for Redis storage; image-only turns become `"[image]"`
 - `thread.toPublicUrl()` — returns the public archive URL (`EXTERNAL_URL/archive/{thread.id}`)
-- All Redis keys use a rolling 7-day TTL (managed by `src/libs/store.js`); stealth threads require Redis — without it, stealth `resolve()` always returns null; non-stealth threads resolve via DB
+- All Redis keys use a rolling 7-day TTL (managed by `src/libs/store.js`); ephemeral thread history expires after 7 days; regular threads resolve via DB indefinitely
 - The system prompt is assembled from ordered `.md` files in `src/llm/prompts/` (see below); `LLM_SYSTEM_PROMPT` env var appends extra instructions after them
 - Each user message is prefixed with `@username: ` (falling back to first name) so the LLM can distinguish between users in a shared thread
 
@@ -404,9 +406,9 @@ Each Telegram user can have a persistent Markdown profile stored in the `user_pr
 
 ## Stealth mode
 
-Users can opt out of DB storage on a per-user basis via `/stealth [on|off]`. Requires a profile to exist (run `/start` first); returns an error if none is found. The `stealthMode` flag is stored as a column on the existing `user_profiles` table (keyed by `id`). The `/stealth` command handler in `BotControlService` writes it directly via the injected `db`.
+Users can opt out of DB message storage on a per-user basis via `/stealth [on|off]`. Requires a profile to exist (run `/start` first); returns an error if none is found. The `stealthMode` flag is stored as a column on the `user_profiles` table; the `/stealth` command handler in `BotControlService` writes it directly via the injected `db`.
 
-For each incoming message, `ThreadService._fetchUserInfo(userId)` fetches `stealthMode` and `permissionLevel` from the DB in a single query at the start of `resolveOrCreate()` — `index.js` never touches these values directly. `IncomingMessage` is a pure synchronous DTO with no DB dependency. `thread.stealth` is set at Thread construction time from the `_fetchUserInfo` result; mid-conversation stealth toggles take effect on the next message. Redis is unaffected — only DB writes are suppressed.
+When a PM thread is created, `resolveOrCreate()` reads `user.stealth` and sets `thread.ephemeral = true` if stealth is on. The `Thread` row is always written to DB (with `ephemeral = true`), but no `Message` rows are ever created for ephemeral threads — history lives in Redis only. The stealth toggle takes effect on the next new thread: continuing an existing thread always honours the `ephemeral` flag that was set at creation time, so mid-conversation toggles do not affect the current thread. Ephemeral threads are not accessible via the archive route by design.
 
 ## Image support
 

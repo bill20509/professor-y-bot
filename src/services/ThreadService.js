@@ -4,21 +4,20 @@ const threadKey = (id) => `thread:${id}`;
 const msgKey = (id) => `msg:${id}`;
 
 /**
- * Lightweight thread data model. Holds history — no I/O, no stealth state.
+ * Lightweight thread data model. Holds history — no I/O.
  * All persistence is handled by ThreadService.
  */
 class Thread {
-  constructor(id, history = []) {
+  constructor(id, history = [], ephemeral = false) {
     this.id = id;
     this.history = history;
+    this.ephemeral = ephemeral;
   }
 
-  /** Append a message to history. */
   append(role, content) {
     this.history.push({ role, content });
   }
 
-  /** Public archive URL for this thread. */
   toPublicUrl() {
     const base = process.env.EXTERNAL_URL || "http://localhost";
     return `${base}/archive/${this.id}`;
@@ -46,16 +45,15 @@ class Thread {
  *   db     — Prisma client or null
  *   user   — UserService instance (provides stealth flag)
  *
- * _dataSource is set in resolveOrCreate() per request:
- *   "store" — stealth PM: Redis only; history serialized to threadKey; msgKey tracks message IDs
- *   "db"    — all group chats and non-stealth PM: DB for thread/message records; messageId column enables DB-native resolution
+ * thread.ephemeral drives all storage branching:
+ *   ephemeral=true  — stealth PM: Thread row in DB; history + msgKey tracking in Redis only
+ *   ephemeral=false — regular: groups and non-stealth PM; Thread row + Message rows in DB; resolved via messageId/replyMessageId
  */
 class ThreadService {
   constructor({ store, db, user } = {}) {
     this._store = store;
     this._db = db;
     this._user = user;
-    this._dataSource = null;
     this._pendingMessageId = null;
     /** The resolved/created Thread for this request. Set by resolveOrCreate(). */
     this.current = null;
@@ -65,22 +63,19 @@ class ThreadService {
   // Factory / lifecycle
   // ---------------------------------------------------------------------------
 
-  async create({ chatId } = {}) {
+  async create({ chatId, ephemeral = false } = {}) {
     const id = randomBytes(16).toString("hex");
-
-    if (this._dataSource === "store") {
+    await this._db.thread.create({ data: { id, chatId: String(chatId ?? ""), ephemeral } });
+    if (ephemeral) {
       await this._store.set(threadKey(id), "[]");
-    } else {
-      await this._db.thread.create({ data: { id, chatId } });
     }
-
-    return new Thread(id, []);
+    return new Thread(id, [], ephemeral);
   }
 
   /**
-   * Load a thread by ID from DB. Used by the archive route only.
-   * Stealth threads have no DB records and will return an empty Thread,
-   * which the archive route correctly treats as "not found".
+   * Load a regular thread by ID from DB messages.
+   * Used by the archive route. Ephemeral threads have no Message rows and are
+   * intentionally not accessible here — they return empty → 404.
    */
   async load(threadId) {
     const messages = await this._db.message.findMany({
@@ -95,30 +90,27 @@ class ThreadService {
   }
 
   async resolve(replyToId) {
-    if (this._dataSource === "store") {
-      const threadId = await this._store.get(msgKey(replyToId));
-      if (!threadId) return null;
-      const raw = await this._store.get(threadKey(threadId));
-      return new Thread(threadId, raw ? JSON.parse(raw) : []);
+    // Non-ephemeral: find via DB Message record (messageId or replyMessageId).
+    if (this._db) {
+      const msg = await this._db.message.findFirst({
+        where: {
+          OR: [
+            { messageId: String(replyToId) },
+            { replyMessageId: String(replyToId) },
+          ],
+        },
+      });
+      if (msg) return this.load(msg.threadId);
     }
 
-    const msg = await this._db.message.findFirst({
-      where: {
-        OR: [
-          { messageId: String(replyToId) },
-          { replyMessageId: String(replyToId) },
-        ],
-      },
-    });
-    if (!msg) return null;
-    return this.load(msg.threadId);
+    // Ephemeral: find via Redis msgKey, load history from Redis.
+    const threadId = await this._store.get(msgKey(replyToId));
+    if (!threadId) return null;
+    const raw = await this._store.get(threadKey(threadId));
+    return new Thread(threadId, raw ? JSON.parse(raw) : [], true);
   }
 
   async resolveOrCreate(incoming) {
-    // Determine the data source for the thread
-    this._dataSource =
-      incoming.isGroup || !this._user?.current?.stealth ? "db" : "store";
-
     if (incoming.replyToId) {
       this.current = await this.resolve(incoming.replyToId);
     }
@@ -126,7 +118,8 @@ class ThreadService {
       !this.current &&
       ((incoming.isGroup && incoming.isMention) || incoming.isPrivate)
     ) {
-      this.current = await this.create({ chatId: incoming.chatId });
+      const ephemeral = incoming.isPrivate && !!this._user?.current?.stealth;
+      this.current = await this.create({ chatId: incoming.chatId, ephemeral });
     }
 
     return this.current;
@@ -137,14 +130,17 @@ class ThreadService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Append the user message to history and persist a DB record before calling the LLM.
-   * Expects a Prompt DTO: text (DB row), content (history / LLM), userId, attachment.
+   * Append the user message to history and persist before calling the LLM.
+   * Expects a Prompt DTO: text (DB row), content (history / LLM), userId, messageId, attachment.
+   *
+   * ephemeral: tracks user messageId → threadId in Redis only.
+   * regular: creates a Message row in DB.
    */
   async appendPrompt(prompt) {
     const thread = this.current;
     thread.append("user", prompt.content);
 
-    if (this._dataSource === "store") {
+    if (thread.ephemeral) {
       await this._store.set(msgKey(prompt.messageId), thread.id);
       return;
     }
@@ -166,13 +162,13 @@ class ThreadService {
    * Finalize the exchange after the bot reply is sent.
    * replyMessageId — Telegram message_id of the bot's reply (enables future thread continuation).
    *
-   * "store": serializes history to Redis + tracks the bot reply ID via msgKey.
-   * "db":    updates the pending message row with response, replyModel, and replyMessageId.
+   * ephemeral: serializes history to Redis + tracks bot reply msgKey → threadId.
+   * regular: updates the pending Message row with response, replyModel, replyMessageId.
    */
   async updateReply(replyMessageId, { replyModel = "" } = {}) {
     const thread = this.current;
 
-    if (this._dataSource === "store") {
+    if (thread.ephemeral) {
       await this._store.set(
         threadKey(thread.id),
         JSON.stringify(thread.serialize()),
