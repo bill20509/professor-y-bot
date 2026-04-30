@@ -8,7 +8,7 @@ setGlobalDispatcher(
       family: 4, // Forces IPv4
       keepAlive: true,
     },
-  })
+  }),
 );
 
 const servicesContainer = require("./src/services");
@@ -82,12 +82,14 @@ bot.onMessage(async (message, services) => {
       sentMsg = await bot.sendMessage(chatId, reply + info, replyOptions);
     }
 
-    await threadService.updateReply(sentMsg.message_id, { replyModel: llm.providerInfo() });
+    await threadService.updateReply(sentMsg.message_id, {
+      replyModel: llm.providerInfo(),
+    });
   } catch (error) {
     console.error("Error handling message:", error);
     await bot.sendMessage(
-      chatId,
-      "Sorry, something went wrong. Please try again."
+      message.chatId,
+      "Sorry, something went wrong. Please try again.",
     );
   } finally {
     threadService.cleanup();
@@ -96,11 +98,11 @@ bot.onMessage(async (message, services) => {
 
 for (const cmd of Object.values(SLASH_COMMANDS)) {
   bot.onCommand(cmd, (incoming, services) =>
-    services.get("botControl").handleCommand(incoming, services)
+    services.get("botControl").handleCommand(incoming, services),
   );
 }
 bot.on("callback_query", (query) =>
-  servicesContainer.get("botControl").handleCallback(query)
+  servicesContainer.get("botControl").handleCallback(query),
 );
 
 async function main() {
@@ -108,7 +110,7 @@ async function main() {
 
   await bot.setMyCommands(
     BOT_COMMANDS.map(({ command, description }) => ({ command, description })),
-    { scope: { type: "all_private_chats" } }
+    { scope: { type: "all_private_chats" } },
   );
 
   const app = express();
