@@ -111,6 +111,7 @@ bot.on("callback_query", (query) => {
 });
 
 async function main() {
+  await createSeriviceContainer().get("llm").init();
   startSubscriber(bot);
 
   await bot.setMyCommands(
